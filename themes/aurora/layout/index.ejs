@@ -1,0 +1,16 @@
+<section class="hero">
+  <p class="eyebrow">WELCOME TO MY BLOG</p>
+  <h1><%= config.subtitle || config.title %></h1>
+  <p><%= config.description %></p>
+</section>
+<div class="posts">
+<% page.posts.each(function(post) { %>
+  <article class="post-card">
+    <p class="post-meta"><time><%= date(post.date, 'YYYY-MM-DD') %></time><% if (post.categories && post.categories.length) { %> · <%= post.categories.map(c => c.name).join(' / ') %><% } %></p>
+    <h2><a href="<%- url_for(post.path) %>"><%= post.title %></a></h2>
+    <%- post.excerpt || post.content %>
+    <a class="read-more" href="<%- url_for(post.path) %>">阅读全文 →</a>
+  </article>
+<% }) %>
+</div>
+<%- partial('_partial/paginator', { paginator: page }) %>

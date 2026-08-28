@@ -1,0 +1,1 @@
+<ul class="archive-list"><% page.posts.each(function(post) { %><li><time><%= date(post.date, 'YYYY-MM-DD') %></time><a href="<%- url_for(post.path) %>"><%= post.title %></a></li><% }) %></ul>

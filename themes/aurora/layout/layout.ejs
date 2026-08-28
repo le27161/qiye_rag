@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= page.title ? page.title + ' · ' : '' %><%= config.title %></title>
+  <meta name="description" content="<%= config.description %>">
+  <link rel="stylesheet" href="<%- url_for('/css/style.css') %>">
+</head>
+<body>
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a class="brand" href="<%- url_for('/') %>"><%= config.title %></a>
+      <nav>
+        <% const menu = theme.menu || {}; Object.keys(menu).forEach(function(name) { %>
+          <a href="<%- url_for(menu[name]) %>"><%= name %></a>
+        <% }) %>
+      </nav>
+    </div>
+  </header>
+  <main class="container"><%- body %></main>
+  <footer class="footer">© <%= new Date().getFullYear() %> <%= config.author %> · Powered by Hexo</footer>
+</body>
+</html>

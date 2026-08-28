@@ -1,0 +1,1 @@
+<article class="post single"><h1>标签</h1><ul class="archive-list"><% site.tags.each(function(tag) { %><li><span><%= tag.name %></span><a href="<%- url_for(tag.path) %>"><%= tag.length %> 篇文章</a></li><% }) %></ul></article>
