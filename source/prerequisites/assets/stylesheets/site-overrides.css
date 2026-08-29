@@ -1,0 +1,32 @@
+@media screen and (min-width: 76.25em) {
+  .md-sidebar--secondary .md-sidebar__scrollwrap {
+    height: calc(100vh - 4.8rem);
+    max-height: calc(100vh - 4.8rem);
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--md-default-fg-color--lighter) transparent;
+  }
+
+  .md-sidebar--secondary .md-sidebar__inner {
+    padding-bottom: 1rem;
+  }
+
+  .md-sidebar--secondary .md-sidebar__scrollwrap::-webkit-scrollbar {
+    width: 0.35rem;
+  }
+
+  .md-sidebar--secondary .md-sidebar__scrollwrap::-webkit-scrollbar-thumb {
+    background-color: var(--md-default-fg-color--lighter);
+    border-radius: 999px;
+  }
+
+  .md-sidebar--secondary .md-sidebar__scrollwrap::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+}
+
+.md-sidebar--secondary .md-nav__link {
+  overflow-wrap: anywhere;
+}

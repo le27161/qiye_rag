@@ -3,6 +3,7 @@ menu:
   归档: /archives/
   分类: /categories/
   标签: /tags/
+  前置知识: /prerequisites/
   关于: /about/
 comments:
   enable: true
