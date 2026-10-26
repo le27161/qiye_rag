@@ -6,7 +6,9 @@
     "build": "hexo generate",
     "clean": "hexo clean",
     "deploy": "hexo deploy",
-    "server": "hexo server"
+    "server": "hexo server",
+    "check:rag": "node tools/check-rag.cjs",
+    "check:content": "node tools/check-rag.cjs && node tools/check-content.cjs"
   },
   "hexo": {
     "version": "8.1.2"

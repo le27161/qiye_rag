@@ -1,6 +1,10 @@
 <article class="post single">
   <p class="post-meta"><time><%= date(page.date, 'YYYY-MM-DD') %></time><% if (page.categories && page.categories.length) { %> · <%= page.categories.map(c => c.name).join(' / ') %><% } %></p>
   <h1><%= page.title %></h1>
+  <% const module = (theme.modules || []).find(item => item.series === page.series);
+     if (module) { %>
+    <p class="post-meta"><a href="<%- url_for(module.url) %>"><%= module.series %> · 专栏目录</a></p>
+  <% } %>
   <div class="post-content"><%- page.content %></div>
   <% if (theme.comments && theme.comments.enable) { %>
     <section class="comments"><h3>评论</h3><div id="waline"></div>

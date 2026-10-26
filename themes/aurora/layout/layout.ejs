@@ -4,14 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%= page.title ? page.title + ' · ' : '' %><%= config.title %></title>
-  <meta name="description" content="<%= config.description %>">
+  <meta name="description" content="<%= page.description || config.description %>">
   <link rel="stylesheet" href="<%- url_for('/css/style.css') %>">
+  <link rel="stylesheet" href="<%- url_for('/css/article.css') %>">
 </head>
 <body>
   <header class="site-header">
     <div class="nav-wrap">
       <a class="brand" href="<%- url_for('/') %>"><%= config.title %></a>
-      <nav>
+      <nav aria-label="主导航">
         <% const menu = theme.menu || {}; Object.keys(menu).forEach(function(name) { %>
           <a href="<%- url_for(menu[name]) %>"><%= name %></a>
         <% }) %>
@@ -19,6 +20,9 @@
     </div>
   </header>
   <main class="container"><%- body %></main>
-  <footer class="footer">© <%= new Date().getFullYear() %> <%= config.author %> · Powered by Hexo</footer>
+  <footer class="footer">
+    <p><a href="<%- url_for('/categories/') %>">分类</a> · <a href="<%- url_for('/tags/') %>">标签</a> · <a href="<%- url_for('/prerequisites/') %>">参考资料</a></p>
+    © <%= new Date().getFullYear() %> <%= config.author %> · Powered by Hexo
+  </footer>
 </body>
 </html>

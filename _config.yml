@@ -4,8 +4,8 @@
 
 # Site
 title: 我的个人博客
-subtitle: 记录技术、生活与思考
-description: 一个使用 Hexo 构建的中文个人博客
+subtitle: 把大模型用进真实系统
+description: 记录 RAG、Agent 与大模型应用中的原理、工程取舍和实践思考。
 keywords:
 author: le27161
 language: zh-CN

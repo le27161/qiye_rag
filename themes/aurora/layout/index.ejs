@@ -1,8 +1,24 @@
 <section class="hero">
-  <p class="eyebrow">WELCOME TO MY BLOG</p>
+  <p class="eyebrow">NOTES ON BUILDING WITH AI</p>
   <h1><%= config.subtitle || config.title %></h1>
   <p><%= config.description %></p>
 </section>
+<section class="module-section" aria-labelledby="module-heading">
+  <h2 id="module-heading">三个主题，一条应用主线</h2>
+  <div class="module-grid">
+    <% (theme.modules || []).forEach(function(module) {
+      const count = site.posts.filter(post => post.series === module.series).length;
+    %>
+    <a class="module-card" href="<%- url_for(module.url) %>">
+      <span class="module-label"><%= module.label %></span>
+      <h3><%= module.title %></h3>
+      <p><%= module.description %></p>
+      <span class="module-link"><%= count %> 篇文章 · 进入专栏 →</span>
+    </a>
+    <% }) %>
+  </div>
+</section>
+<h2 class="latest-heading">最近的文章</h2>
 <div class="posts">
 <% page.posts.each(function(post) { %>
   <article class="post-card">
