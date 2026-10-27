@@ -2,8 +2,6 @@
 
 基于 **FastAPI、LangChain 和 Milvus Hybrid Search** 的知识问答项目，覆盖文档入库、FAQ 与文档检索、重排序、流式回答、知识库版本管理和质量回归。
 
-仓库名称为 `qiye_rag`，代码与界面中的项目名称沿用 **KnowForge RAG Platform**。
-
 ## 主要功能
 
 - **混合检索**：本地 BGE-M3 稠密向量与 Milvus 内置 BM25 组合召回，通过 BGE Reranker 重排序。
