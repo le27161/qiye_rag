@@ -17,7 +17,8 @@ jobs:
           cache: npm
       - uses: actions/configure-pages@v5
       - run: npm ci
-      - run: npx hexo generate
+      - run: npm run build
+      - run: npm run check:content
       - uses: actions/upload-pages-artifact@v3
         with: { path: ./public }
   deploy:

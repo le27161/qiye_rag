@@ -25,7 +25,7 @@ modules:
     label: 把零散概念连起来
     description: 概括模型、上下文和框架，理解选型思路，不堆砌术语。
 comments:
-  enable: true
+  enable: false
   serverURL: ''
 social: []
 avatar: /images/avatar.svg

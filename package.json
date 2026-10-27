@@ -5,7 +5,6 @@
   "scripts": {
     "build": "hexo generate",
     "clean": "hexo clean",
-    "deploy": "hexo deploy",
     "server": "hexo server",
     "check:rag": "node tools/check-rag.cjs",
     "check:content": "node tools/check-rag.cjs && node tools/check-content.cjs"
@@ -22,7 +21,11 @@
     "hexo-renderer-ejs": "^2.0.0",
     "hexo-renderer-marked": "^7.0.0",
     "hexo-renderer-stylus": "^3.0.1",
-    "hexo-server": "^3.0.0",
-    "hexo-theme-landscape": "^1.0.0"
+    "hexo-server": "^3.0.0"
+  },
+  "devDependencies": {
+    "hexo-front-matter": "^4.2.1",
+    "js-yaml": "^4.3.2",
+    "jsdom": "^25.0.1"
   }
 }

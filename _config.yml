@@ -104,9 +104,9 @@ theme_config:
   avatar: /images/avatar.svg
   social:
     - name: GitHub
-      url: https://github.com/le27161/zjl.github.io
+      url: https://github.com/le27161/le27161.github.io
   comments:
-    enable: true
+    enable: false
     # 部署 Waline 后填写服务地址，例如 https://your-waline.vercel.app
     serverURL: ''
 

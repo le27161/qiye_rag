@@ -7,3 +7,18 @@ public/
 .deploy*/
 _multiconfig.yml
 work/
+
+# Local credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.local.yml
+*.local.yaml
+*.pem
+*.key
+
+# Editor and temporary files
+.idea/
+*.swp
+*.swo
+*.tmp

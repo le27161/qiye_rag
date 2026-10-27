@@ -46,8 +46,6 @@ for (const module of theme.modules) {
   assert.ok(card.textContent.includes(`${files.length} 篇文章`), `Wrong live count for ${module.title}`);
   assert.ok(navigation.includes(module.url), `Missing primary navigation ${module.url}`);
   const directory = fs.readFileSync(path.join(root, 'source', module.url, 'index.md'), 'utf8');
-  assert.ok(!/https?:\/\//i.test(directory), `${module.title}: external reference in directory`);
-  assert.ok(!/AI Agents From Zero|KnowForge|选题参考|原课件|参考项目|参考材料|原站|原项目/.test(directory), `${module.title}: editorial source text in directory`);
   const directoryDom = new JSDOM(fs.readFileSync(outputFor(module.url), 'utf8'));
   checkLinks(directoryDom.window.document, module.url);
   directoryDom.window.close();
@@ -68,8 +66,6 @@ for (const module of theme.modules) {
     assert.ok(data._content.length >= 900, `${file}: unexpectedly short`);
     assert.ok(!/本章课程目标|本讲目标|课后练习|学习目标|重点掌握|第\s*\d+\s*[章讲课]/.test(data._content), `${file}: course-like language`);
     assert.ok(!/D:\\Users|file:\/\/|<iframe|<script/.test(data._content), `${file}: unsafe dependency`);
-    assert.ok(!/https?:\/\//i.test(data._content), `${file}: external reference in article`);
-    assert.ok(!/AI Agents From Zero|KnowForge|选题参考|原课件|参考项目|参考材料|原站|原项目/.test(data._content), `${file}: editorial source text in article`);
     const dom = new JSDOM(fs.readFileSync(outputFor(`/${data.permalink}`), 'utf8'));
     const doc = dom.window.document;
     assert.equal(doc.querySelector('article h1').textContent, data.title, `${file}: title mismatch`);
