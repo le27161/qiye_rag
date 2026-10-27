@@ -1,0 +1,23 @@
+scenario_id = "law_firm_case_facts"
+display_name = "本案卷宗检索"
+industry = "律所诉讼"
+description = "检索当前案件的合同、证据和庭审资料。"
+assistant_name = "案件卷宗助手"
+business_domain = "当前案件卷宗和证据资料"
+support_contact = "案件负责人"
+faq_collection = "law_firm_case_facts_faq_v1"
+doc_collection = "law_firm_matter_documents_v1"
+valid_sources = ["pleading", "contract", "evidence", "hearing", "work_product"]
+sample_questions = ["合同约定的付款期限是什么？", "对方何时收到催告函？"]
+[source_labels]
+pleading = "诉辩文书"
+contract = "合同与协议"
+evidence = "证据材料"
+hearing = "庭审资料"
+work_product = "律师工作底稿"
+[source_patterns]
+pleading = "起诉|答辩|诉状|仲裁"
+contract = "合同|协议|条款|签署|交付|付款"
+evidence = "证据|发票|聊天|邮件|催告|签收"
+hearing = "庭审|笔录|质证|法庭"
+work_product = "底稿|法律分析|研究备忘录"

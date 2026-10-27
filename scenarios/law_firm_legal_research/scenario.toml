@@ -1,0 +1,21 @@
+scenario_id = "law_firm_legal_research"
+display_name = "法律法规检索"
+industry = "法律研究"
+description = "检索法律、法规、司法解释和指导性案例。"
+assistant_name = "法律研究助手"
+business_domain = "现行法律法规和司法解释"
+support_contact = "法务研究负责人"
+faq_collection = "law_firm_legal_faq_v1"
+doc_collection = "law_firm_legal_documents_v1"
+valid_sources = ["law", "regulation", "judicial_interpretation", "guiding_case"]
+sample_questions = ["民法典关于违约损失如何规定？", "该司法解释目前是否有效？"]
+[source_labels]
+law = "法律"
+regulation = "行政法规与规章"
+judicial_interpretation = "司法解释"
+guiding_case = "指导性案例"
+[source_patterns]
+law = "民法典|法律|法条|第[一二三四五六七八九十百]+条"
+regulation = "行政法规|规章|办法|规定"
+judicial_interpretation = "司法解释|最高人民法院|最高人民检察院"
+guiding_case = "指导性案例|典型案例"

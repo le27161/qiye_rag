@@ -1,0 +1,408 @@
+:root {
+  --bg: #f3f6fb;
+  --panel: #ffffff;
+  --ink: #172033;
+  --muted: #64748b;
+  --line: #d8e0ec;
+  --blue: #2563eb;
+  --green: #059669;
+  --amber: #d97706;
+  --red: #dc2626;
+  --shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+button, textarea, select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+}
+
+.topbar {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.25);
+}
+
+.brand {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.subtitle {
+  margin-top: 3px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.status-pill {
+  min-width: 124px;
+  text-align: center;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: #dbeafe;
+  background: #1f2937;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.status-pill.ready {
+  border-color: rgba(5, 150, 105, 0.45);
+  color: #bbf7d0;
+}
+
+.status-pill.warn {
+  border-color: rgba(217, 119, 6, 0.55);
+  color: #fde68a;
+}
+
+.layout {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 280px minmax(420px, 1fr) 340px;
+  gap: 18px;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.side-panel, .detail-panel {
+  padding: 18px;
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
+}
+
+.side-panel {
+  overflow-x: hidden;
+}
+
+.chat-panel {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+}
+
+.panel-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.panel-title.small {
+  margin-top: 22px;
+  font-size: 14px;
+  color: #334155;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+}
+
+.field span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+select, textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  color: var(--ink);
+  background: #fff;
+}
+
+select {
+  height: 38px;
+  padding: 0 10px;
+}
+
+.meta-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.meta-list.compact {
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.meta-list div {
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.meta-list span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.meta-list strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.meta-list.compact strong {
+  font-size: 12px;
+}
+
+.sample-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.sample, .secondary-btn {
+  min-height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: #1e293b;
+  background: #f8fafc;
+  text-align: left;
+}
+
+.sample:hover, .secondary-btn:hover {
+  border-color: var(--blue);
+  background: #eff6ff;
+}
+
+.secondary-btn {
+  width: 100%;
+  margin-top: 18px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.chat-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.chat-header p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.messages {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.message {
+  max-width: 82%;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  padding: 12px 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.detail-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 0.78fr) auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.detail-panel .diagnostics,
+.detail-panel .sources {
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
+  padding-right: 2px;
+}
+
+.detail-panel .sources {
+  padding-bottom: 2px;
+}
+
+.message.user {
+  align-self: flex-end;
+  color: #fff;
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+.message.assistant {
+  align-self: flex-start;
+  background: #f8fafc;
+}
+
+.message.error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: 1fr 86px;
+  gap: 10px;
+  padding: 14px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+textarea {
+  min-height: 44px;
+  max-height: 140px;
+  resize: none;
+  padding: 11px 12px;
+  line-height: 1.5;
+}
+
+#sendBtn {
+  height: 44px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: var(--blue);
+  font-weight: 800;
+}
+
+#sendBtn:disabled {
+  cursor: not-allowed;
+  background: #94a3b8;
+}
+
+.diagnostics, .sources {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.diag-row, .source-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.diag-row span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.diag-row strong, .diag-row code {
+  display: block;
+  margin-top: 4px;
+  word-break: break-word;
+}
+
+.diag-row code {
+  font-family: "Cascadia Code", Consolas, monospace;
+  color: #1e293b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.source-card .source-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.source-card .score {
+  color: var(--green);
+}
+
+.source-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1100px) {
+  body {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+  }
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .layout {
+    grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
+  }
+  .side-panel, .detail-panel {
+    max-height: none;
+  }
+  .chat-panel {
+    min-height: 620px;
+    height: auto;
+  }
+  .detail-panel {
+    display: block;
+    overflow: visible;
+  }
+  .detail-panel .diagnostics,
+  .detail-panel .sources {
+    overflow: visible;
+  }
+  .message {
+    max-width: 94%;
+  }
+}

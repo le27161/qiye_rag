@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mini RAG</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <div class="brand">Mini RAG</div>
+        <div class="subtitle">真实 Milvus + MySQL + BGE + LLM 的精简问答闭环</div>
+      </div>
+      <div class="status-pill" id="statusPill">检查中</div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel side-panel">
+        <div class="panel-title">当前设置</div>
+        <label class="field">
+          <span>业务来源</span>
+          <select id="sourceFilter">
+            <option value="">全部来源</option>
+          </select>
+        </label>
+        <div class="meta-list">
+          <div>
+            <span>场景</span>
+            <strong id="scenarioName">-</strong>
+          </div>
+          <div>
+            <span>知识库版本</span>
+            <strong id="kbVersion">-</strong>
+          </div>
+        </div>
+        <div class="panel-title small">LLM 配置</div>
+        <div class="meta-list compact">
+          <div>
+            <span>模型</span>
+            <strong id="llmModel">-</strong>
+          </div>
+          <div>
+            <span>Base URL</span>
+            <strong id="llmBaseUrl">-</strong>
+          </div>
+          <div>
+            <span>Key / 超时</span>
+            <strong id="llmRuntime">-</strong>
+          </div>
+          <div>
+            <span>配置文件</span>
+            <strong id="envFiles">-</strong>
+          </div>
+        </div>
+        <div class="panel-title small">检索配置</div>
+        <div class="meta-list compact">
+          <div>
+            <span>变体 / 重排</span>
+            <strong id="retrievalMode">-</strong>
+          </div>
+          <div>
+            <span>TopK</span>
+            <strong id="retrievalTopK">-</strong>
+          </div>
+        </div>
+        <div class="panel-title small">示例问题</div>
+        <div class="sample-list">
+          <button class="sample" data-question="报销流程是什么">报销流程是什么</button>
+          <button class="sample" data-question="那审批呢" data-history="报销流程是什么">那审批呢</button>
+          <button class="sample" data-question="VPN 连不上怎么处理">VPN 连不上怎么处理</button>
+          <button class="sample" data-question="新人入职需要哪些材料">新人入职需要哪些材料</button>
+        </div>
+        <button class="secondary-btn" id="clearBtn">清空会话</button>
+      </aside>
+
+      <section class="panel chat-panel">
+        <div class="chat-header">
+          <div>
+            <div class="panel-title">知识问答</div>
+            <p>只保留最基础功能：提问、追问历史、来源过滤、答案和引用。</p>
+          </div>
+        </div>
+        <div class="messages" id="messages"></div>
+        <form class="composer" id="askForm">
+          <textarea id="queryInput" rows="1" placeholder="输入企业知识库问题，按 Enter 发送，Shift + Enter 换行"></textarea>
+          <button type="submit" id="sendBtn">发送</button>
+        </form>
+      </section>
+
+      <aside class="panel detail-panel">
+        <div class="panel-title">本轮诊断</div>
+        <div class="diagnostics" id="diagnostics">
+          <p class="muted">发送问题后显示 route、改写问题、查询变体和检索分数。</p>
+        </div>
+        <div class="panel-title small">引用来源</div>
+        <div class="sources" id="sources"></div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
+

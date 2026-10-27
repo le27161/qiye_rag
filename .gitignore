@@ -1,24 +1,52 @@
-.DS_Store
-Thumbs.db
-db.json
-*.log
-node_modules/
-public/
-.deploy*/
-_multiconfig.yml
-work/
-
-# Local credentials and machine-specific configuration
+# 本地环境和密钥
 .env
 .env.*
-!.env.example
-*.local.yml
-*.local.yaml
+!.env.local.example
+!.env.compose.example
+!**/.env.example
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# 运行产物
+logs/
+reports/
+.jbeval/
+site/
+docs/archive/
+
+# 本地大模型和向量库/数据库卷
+models/
+volumes/
+milvus_data/
+mysql_data/
+minio_data/
+etcd_data/
+
+# 编辑器和系统文件
+.claude/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.log
+*.tmp
+*.bak
+repro_*.py
+
+# Local assistant state, archives and private credentials
+.workbuddy/
+*.rar
+*.7z
 *.pem
 *.key
-
-# Editor and temporary files
-.idea/
-*.swp
-*.swo
-*.tmp
+*.p12
+*.pfx

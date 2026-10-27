@@ -1,1 +1,0 @@
-<article class="post single"><h1>分类</h1><ul class="archive-list"><% site.categories.each(function(category) { %><li><span><%= category.name %></span><a href="<%- url_for(category.path) %>"><%= category.length %> 篇文章</a></li><% }) %></ul></article>

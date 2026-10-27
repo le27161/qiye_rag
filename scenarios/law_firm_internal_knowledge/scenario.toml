@@ -1,0 +1,21 @@
+scenario_id = "law_firm_internal_knowledge"
+display_name = "律所内部知识"
+industry = "律所管理"
+description = "检索律所办案流程、文书模板和证据规范。"
+assistant_name = "律所知识助手"
+business_domain = "律所内部办案流程和工作规范"
+support_contact = "律所管理员"
+faq_collection = "law_firm_internal_faq_v1"
+doc_collection = "law_firm_internal_documents_v1"
+valid_sources = ["procedure", "template", "evidence_standard", "policy"]
+sample_questions = ["起诉前需要准备哪些材料？", "证据目录模板在哪里？"]
+[source_labels]
+procedure = "办案流程"
+template = "文书模板"
+evidence_standard = "证据规范"
+policy = "内部制度"
+[source_patterns]
+procedure = "流程|步骤|办案|立案|审批"
+template = "模板|范本|格式|文书"
+evidence_standard = "证据|材料|目录|规范|留痕"
+policy = "制度|规定|管理办法|权限"

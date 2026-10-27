@@ -1,0 +1,2524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Milvus 索引算法详解 — IVF_FLAT / IVF_SQ8 / IVF_PQ / HNSW</title>
+<style>
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root {
+  --bg: #0f1117; --surface: #1a1d27; --surface2: #242836;
+  --border: #2d3140; --text: #e1e4ed; --text2: #9ca3b4;
+  --accent: #6c8cff; --accent2: #4ade80; --accent3: #f59e0b;
+  --red: #f87171; --purple: #c084fc; --cyan: #22d3ee;
+  --cluster: #6c8cff; --query: #f87171; --centroid: #fbbf24;
+  --graph-edge: #4b5563; --graph-node: #6c8cff;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  --shadow: 0 18px 50px rgba(0,0,0,.24);
+}
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  min-height: 100vh; overflow-x: hidden; line-height: 1.45;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+.header {
+  background: linear-gradient(135deg, #1a1d27 0%, #1e2440 100%);
+  border-bottom: 1px solid var(--border); padding: 10px 20px;
+  text-align: center; position: relative; z-index: 100;
+}
+.header h1 {
+  font-size: 20px; font-weight: 700; letter-spacing: -0.5px;
+  background: linear-gradient(135deg, #6c8cff, #c084fc); -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent; margin-bottom: 2px;
+}
+.header .subtitle { color: var(--text2); font-size: 12px; }
+
+/* ============================================================
+   TAB NAVIGATION
+   ============================================================ */
+.tabs {
+  display: flex; gap: 4px; padding: 8px 24px; background: var(--surface);
+  border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 99;
+  overflow-x: auto; justify-content: center;
+}
+.tab {
+  padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: transparent; color: var(--text2); cursor: pointer;
+  font-size: 13px; font-weight: 600; transition: all .2s; white-space: nowrap;
+  font-family: var(--font);
+}
+.tab:hover { border-color: var(--accent); color: var(--text); }
+.tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tab:focus-visible, .btn:focus-visible, .algo-card:focus-visible {
+  outline: 2px solid var(--accent2); outline-offset: 2px;
+}
+.tab .badge {
+  display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px;
+  margin-left: 6px; font-weight: 700; vertical-align: 1px;
+}
+.badge-flat { background: #6c8cff33; color: var(--accent); }
+.badge-sq8 { background: #4ade8033; color: var(--accent2); }
+.badge-pq  { background: #f59e0b33; color: var(--accent3); }
+.badge-hnsw{ background: #c084fc33; color: var(--purple); }
+
+/* ============================================================
+   LEARNING GUIDE
+   ============================================================ */
+.learning-guide {
+  background:
+    radial-gradient(circle at 12% 20%, rgba(108,140,255,.16), transparent 34%),
+    radial-gradient(circle at 86% 28%, rgba(74,222,128,.12), transparent 30%),
+    var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.learning-guide-inner {
+  max-width: 1100px; margin: 0 auto; padding: 8px 20px 10px;
+}
+.guide-title {
+  display: flex; justify-content: space-between; gap: 16px; align-items: end;
+  margin-bottom: 8px;
+}
+.guide-title h2 { font-size: 14px; letter-spacing: .2px; }
+.guide-title p { color: var(--text2); font-size: 12px; max-width: 720px; }
+.algorithm-map {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+}
+.algo-card {
+  border: 1px solid var(--border); background: rgba(36,40,54,.78);
+  border-radius: 9px; padding: 8px 9px; cursor: pointer; min-height: 52px;
+  transition: border-color .2s, transform .2s, background .2s;
+  color: var(--text); font: inherit; text-align: left; appearance: none;
+}
+.algo-card:hover, .algo-card.active {
+  border-color: var(--accent); background: rgba(42,48,72,.94); transform: translateY(-1px);
+}
+.algo-card strong { display: block; font-size: 13px; margin-bottom: 3px; }
+.algo-card p {
+  display: none;
+}
+.algo-card .tradeoff {
+  display: inline-flex; gap: 6px; align-items: center; color: var(--accent2);
+  font-family: var(--font-mono); font-size: 10px;
+}
+
+/* ============================================================
+   TEACHING CASE
+   ============================================================ */
+.case-strip {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.case-strip > summary {
+  max-width: 1100px; margin: 0 auto; padding: 9px 20px;
+  cursor: pointer; color: var(--text); font-size: 13px; font-weight: 700;
+}
+.case-strip > summary::marker { color: var(--accent3); }
+.case-strip:not([open]) .case-strip-inner { display: none; }
+.case-strip-inner {
+  max-width: 1100px; margin: 0 auto; padding: 0 20px 10px;
+  display: grid; grid-template-columns: 1.1fr 1.3fr; gap: 10px;
+}
+.case-card {
+  background: rgba(36,40,54,.76); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px;
+}
+.case-card h2 { font-size: 14px; margin-bottom: 4px; }
+.case-card p { color: var(--text2); font-size: 12px; margin-bottom: 5px; }
+.case-query {
+  display: inline-block; color: #fff; background: rgba(248,113,113,.14);
+  border: 1px solid rgba(248,113,113,.35); border-radius: 8px;
+  padding: 5px 8px; font-size: 12px;
+}
+.case-flow {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px;
+}
+.case-flow-item {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px;
+}
+.case-flow-item strong { display: block; font-size: 12px; margin-bottom: 3px; }
+.case-flow-item span { color: var(--text2); font-size: 11px; line-height: 1.35; }
+.visual-map {
+  grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px; margin-top: 0;
+}
+.visual-map-item {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 8px; color: var(--text2); font-size: 11px;
+}
+.visual-map-item b { color: var(--text); }
+.visual-dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px;
+}
+.example-block {
+  background: rgba(36,40,54,.78); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent2); border-radius: 10px;
+  padding: 11px 12px; margin: 0 0 10px;
+}
+.example-block h3 { font-size: 14px; color: var(--text); margin-bottom: 5px; }
+.example-analogy {
+  color: var(--text2); font-size: 12px; margin-bottom: 8px;
+}
+.example-steps {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+}
+.example-step {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px;
+}
+.example-step b { display: block; color: var(--accent2); font-size: 12px; margin-bottom: 3px; }
+.example-step span { color: var(--text2); font-size: 11px; line-height: 1.35; }
+.example-takeaway {
+  color: var(--accent3); font-size: 12px; margin-top: 8px;
+  border-top: 1px solid var(--border); padding-top: 7px;
+}
+.lesson-details {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; margin: 0 0 10px; overflow: hidden;
+}
+.lesson-details > summary {
+  padding: 9px 12px; cursor: pointer; color: var(--text);
+  font-size: 13px; font-weight: 700; background: rgba(36,40,54,.55);
+}
+.lesson-details > summary::marker { color: var(--accent2); }
+.lesson-details:not([open]) .lesson-details-body { display: none; }
+.lesson-details-body { padding: 10px; }
+.lesson-details-body > *:last-child { margin-bottom: 0; }
+.lesson-details .example-block { margin-bottom: 10px; }
+.lesson-details .data-panel { margin-bottom: 0; }
+
+/* ============================================================
+   MAIN CONTENT
+   ============================================================ */
+.main { max-width: 1100px; margin: 0 auto; padding: 10px 20px; }
+
+/* Section cards */
+.section {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 10px;
+}
+.section h2 { font-size: 18px; margin-bottom: 4px; }
+.section h3 { font-size: 13px; color: var(--text2); margin-bottom: 8px; font-weight: 500; }
+.section p { color: var(--text2); margin-bottom: 8px; font-size: 12px; }
+
+/* ============================================================
+   CANVAS CONTAINER
+   ============================================================ */
+.canvas-wrap {
+  position: relative; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; margin: 0 auto 10px; max-width: 720px;
+}
+.canvas-wrap canvas { display: block; width: 100%; height: auto; transition: opacity 0.18s ease; }
+.canvas-wrap.stepping canvas { opacity: 0.35; }
+.canvas-legend {
+  display: flex; gap: 10px; padding: 7px 10px; background: var(--surface2);
+  border-top: 1px solid var(--border); flex-wrap: wrap;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); }
+.legend-dot { width: 9px; height: 9px; border-radius: 50%; }
+
+/* ============================================================
+   CONTROL BAR
+   ============================================================ */
+.controls {
+  display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; padding: 8px 0;
+}
+.control-buttons { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.btn {
+  padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text); cursor: pointer;
+  font-size: 12px; font-weight: 600; transition: all .2s; font-family: var(--font);
+}
+.btn:hover { border-color: var(--accent); background: #2a3048; }
+.btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.accent:hover { background: #5b7af0; }
+.btn.warn { background: var(--accent3); border-color: var(--accent3); color: #000; }
+.btn.success { background: var(--accent2); border-color: var(--accent2); color: #000; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.step-indicator {
+  font-size: 12px; color: var(--text2); font-weight: 600;
+  font-family: var(--font-mono);
+}
+.step-progress {
+  grid-column: 1 / -1; height: 6px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 999px; overflow: hidden;
+}
+.step-progress span {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width .25s ease;
+}
+.control-hint {
+  grid-column: 1 / -1; color: var(--text2); font-size: 11px;
+}
+
+/* ============================================================
+   DATA TABLE
+   ============================================================ */
+.data-panel {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;
+}
+.data-card {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px; overflow-x: auto;
+}
+.data-card.full-span { grid-column: 1 / -1; }
+.data-card h4 { font-size: 12px; color: var(--text2); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .5px; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 11px; font-family: var(--font-mono); }
+.data-table th { text-align: left; padding: 4px 6px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); }
+.data-table td { padding: 3px 6px; color: var(--text); border-bottom: 1px solid var(--border); font-size: 10px; }
+.data-table .highlight { color: var(--accent3); font-weight: 700; }
+.data-table .match { background: #4ade8018; }
+.table-note { color: var(--text2); font-size: 11px; margin: 3px 0 8px; }
+.pq-reading-grid {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin-bottom: 8px;
+}
+.pq-reading-step {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 7px;
+}
+.pq-reading-step b { display: block; color: var(--accent2); font-size: 11px; margin-bottom: 3px; }
+.pq-reading-step span { display: block; color: var(--text2); font-size: 10px; line-height: 1.35; }
+.code-pill {
+  color: var(--accent3); font-weight: 700; background: rgba(245,158,11,.12);
+  border: 1px solid rgba(245,158,11,.32); border-radius: 6px; padding: 1px 5px;
+}
+.pq-plain {
+  border-left-color: var(--accent3);
+}
+.pq-story-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+}
+.pq-story-card {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px;
+}
+.pq-story-card b {
+  display: block; color: var(--accent3); font-size: 12px; margin-bottom: 4px;
+}
+.pq-story-card span {
+  color: var(--text2); font-size: 11px; line-height: 1.4;
+}
+.pq-story-card .big-code {
+  display: block; margin-top: 5px; color: #fff; font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ============================================================
+   STEP DETAIL
+   ============================================================ */
+.step-detail {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 10px; min-height: 48px;
+}
+.step-detail .step-num {
+  display: inline-block; background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-right: 10px;
+}
+.step-detail .step-title { font-weight: 700; font-size: 14px; }
+.step-detail .step-desc { color: var(--text2); font-size: 12px; margin-top: 3px; }
+.step-detail .step-data { font-family: var(--font-mono); font-size: 11px; color: var(--accent2); margin-top: 4px; }
+.step-detail .step-key {
+  margin-top: 8px; color: var(--text); font-size: 12px;
+  border-left: 3px solid var(--accent); padding-left: 10px;
+}
+
+/* ============================================================
+   CODE BLOCK (FORMULAS)
+   ============================================================ */
+.code-block {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; font-family: var(--font-mono); font-size: 11px;
+  color: var(--accent2); overflow-x: auto; white-space: pre-wrap; margin: 6px 0;
+}
+
+/* ============================================================
+   COMPARISON TABLE
+   ============================================================ */
+.compare-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.compare-table th { text-align: left; padding: 10px 12px; background: var(--surface2); border-bottom: 2px solid var(--border); color: var(--text); }
+.compare-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text2); }
+.compare-table .pro { color: var(--accent2); }
+.compare-table .con { color: var(--red); }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 900px) {
+  .data-panel { grid-template-columns: 1fr; }
+  .main { padding: 12px; }
+  .learning-guide-inner { padding: 14px 12px; }
+  .case-strip-inner { grid-template-columns: 1fr; padding: 10px 12px; }
+  .case-flow { grid-template-columns: 1fr 1fr; }
+  .visual-map { grid-template-columns: 1fr 1fr; }
+  .example-steps { grid-template-columns: 1fr; }
+  .pq-reading-grid { grid-template-columns: 1fr; }
+  .pq-story-grid { grid-template-columns: 1fr; }
+  .guide-title { display: block; }
+  .guide-title p { margin-top: 6px; }
+  .algorithm-map { grid-template-columns: 1fr 1fr; }
+  .tabs { padding: 8px 12px; gap: 2px; }
+  .tab { padding: 8px 12px; font-size: 12px; }
+  .header { padding: 16px; }
+  .header h1 { font-size: 20px; }
+  .controls { grid-template-columns: 1fr; }
+  .step-indicator { justify-self: start; }
+}
+@media (max-width: 560px) {
+  .algorithm-map { grid-template-columns: 1fr; }
+  .visual-map { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* Tooltip */
+.tooltip {
+  position: absolute; background: var(--surface2); border: 1px solid var(--accent);
+  border-radius: 8px; padding: 8px 12px; font-size: 11px; font-family: var(--font-mono);
+  color: var(--text); pointer-events: none; z-index: 10; display: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,.4); max-width: 240px;
+}
+
+/* Animation for highlights */
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.pulse { animation: pulse 1s ease-in-out infinite; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.fade-in { animation: fadeIn .3s ease-out; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     HEADER
+     ============================================================ -->
+<div class="header">
+  <h1>Milvus 向量索引算法 · 交互式详解</h1>
+  <div class="subtitle">IVF_FLAT · IVF_SQ8 · IVF_PQ · HNSW — 从原理到检索步骤的完整演示</div>
+</div>
+
+<!-- ============================================================
+     TABS
+     ============================================================ -->
+<div class="tabs" id="tabBar" role="tablist" aria-label="Milvus 索引算法">
+  <button class="tab active" data-idx="0" role="tab" aria-selected="true"><span class="badge badge-flat">聚类</span>IVF_FLAT</button>
+  <button class="tab" data-idx="1" role="tab" aria-selected="false"><span class="badge badge-sq8">量化</span>IVF_SQ8</button>
+  <button class="tab" data-idx="2" role="tab" aria-selected="false"><span class="badge badge-pq">乘积量化</span>IVF_PQ</button>
+  <button class="tab" data-idx="3" role="tab" aria-selected="false"><span class="badge badge-hnsw">图索引</span>HNSW</button>
+</div>
+
+<!-- ============================================================
+     LEARNING GUIDE
+     ============================================================ -->
+<section class="learning-guide" aria-label="索引选型导览">
+  <div class="learning-guide-inner">
+    <div class="guide-title">
+      <h2>先看选型，再看动画</h2>
+      <p>四个动画围绕三条主线展开：减少扫描范围、压缩向量、用图导航。课堂建议先讲清取舍，再逐步播放每个检索过程。</p>
+    </div>
+    <div class="algorithm-map" id="algorithmMap">
+      <button class="algo-card active" type="button" data-idx="0" aria-pressed="true">
+        <strong>IVF_FLAT：先分桶，再精确扫</strong>
+        <p>把向量按聚类中心放进倒排桶，查询时只进入最近的 nprobe 个桶，在桶内仍做精确距离计算。</p>
+        <span class="tradeoff">取舍：召回率 ↔ nprobe 扫描量</span>
+      </button>
+      <button class="algo-card" type="button" data-idx="1" aria-pressed="false">
+        <strong>IVF_SQ8：分桶后压缩每一维</strong>
+        <p>把 float 向量维度压成 8-bit 表示，显著省内存，但距离计算会引入量化误差。</p>
+        <span class="tradeoff">取舍：内存下降 ↔ 精度损失</span>
+      </button>
+      <button class="algo-card" type="button" data-idx="2" aria-pressed="false">
+        <strong>IVF_PQ：分段查码本算近似距离</strong>
+        <p>把向量拆成多个子空间，每段用码本 ID 表示，适合大规模数据的强压缩检索。</p>
+        <span class="tradeoff">取舍：压缩更强 ↔ 需要评测召回</span>
+      </button>
+      <button class="algo-card" type="button" data-idx="3" aria-pressed="false">
+        <strong>HNSW：像导航一样在图上跳转</strong>
+        <p>从稀疏高层快速靠近目标区域，再落到稠密底层做局部搜索，常用于低延迟查询。</p>
+        <span class="tradeoff">取舍：查询快 ↔ 内存和构建成本更高</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     TEACHING CASE
+     ============================================================ -->
+<details class="case-strip" aria-label="课堂贯穿示例">
+  <summary>课堂贯穿示例：100 万条设备工单里，查“设备反复高温报警”</summary>
+  <div class="case-strip-inner">
+    <div class="case-card">
+      <h2>贯穿例子：在历史设备工单里找相似处理方案</h2>
+      <p>假设系统里有 100 万条历史工单，每条工单都已经被 embedding 模型转成向量。</p>
+      <span class="case-query">用户查询：设备反复高温报警，应该先检查什么？</span>
+    </div>
+    <div class="case-flow">
+      <div class="case-flow-item">
+        <strong>1. 文本变向量</strong>
+        <span>把查询语句变成一个向量 Q，含义相近的工单向量会离 Q 更近。</span>
+      </div>
+      <div class="case-flow-item">
+        <strong>2. 索引缩小范围</strong>
+        <span>索引不是直接生成答案，而是帮系统少扫数据、更快找到候选工单。</span>
+      </div>
+      <div class="case-flow-item">
+        <strong>3. 找 Top-K</strong>
+        <span>返回最相似的几条历史工单，比如过载、散热、传感器异常。</span>
+      </div>
+      <div class="case-flow-item">
+        <strong>4. RAG 生成答案</strong>
+        <span>大模型基于这些工单证据，总结排查步骤和升级条件。</span>
+      </div>
+      <div class="visual-map">
+        <div class="visual-map-item"><span class="visual-dot" style="background:#6c8cff"></span><b>蓝点</b> = 历史工单向量</div>
+        <div class="visual-map-item"><span class="visual-dot" style="background:#f87171"></span><b>红点 Q</b> = 当前查询</div>
+        <div class="visual-map-item"><span class="visual-dot" style="background:#4ade80"></span><b>绿点</b> = 找到的相似工单</div>
+        <div class="visual-map-item"><span class="visual-dot" style="background:#fbbf24"></span><b>黄点/码本</b> = 索引结构</div>
+      </div>
+    </div>
+  </div>
+</details>
+
+<!-- ============================================================
+     MAIN CONTENT AREA
+     ============================================================ -->
+<div class="main" id="mainContent"></div>
+
+<!-- Tooltip for canvas hover -->
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ============================================================
+// GLOBAL STATE
+// ============================================================
+const STATE = {
+  activeTab: 0,
+  step: 0,
+  maxStep: { 0: 5, 1: 5, 2: 6, 3: 6 },
+  animationId: null,
+  mousePos: { x: 0, y: 0 },
+  hoveredPoint: null,
+};
+
+// ============================================================
+// UTILITY FUNCTIONS
+// ============================================================
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function dist2d(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
+
+// Generate synthetic 2D vectors clustered around centroids
+function generateClusteredVectors(centroids, pointsPerCluster, spread) {
+  const vectors = [];
+  let id = 0;
+  centroids.forEach(([cx, cy], ci) => {
+    for (let i = 0; i < pointsPerCluster; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = Math.random() * spread;
+      vectors.push({
+        id: id++,
+        x: cx + Math.cos(angle) * radius,
+        y: cy + Math.sin(angle) * radius,
+        cluster: ci,
+        centroid: [cx, cy],
+      });
+    }
+  });
+  return vectors;
+}
+
+// ============================================================
+// CANVAS RENDERER
+// ============================================================
+function createCanvas(container, w, h) {
+  const wrap = document.createElement('div');
+  wrap.className = 'canvas-wrap';
+  const canvas = document.createElement('canvas');
+  const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+  canvas.width = Math.round(w * ratio);
+  canvas.height = Math.round(h * ratio);
+  canvas.style.width = '100%';
+  canvas.style.height = 'auto';
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', 'Milvus 索引算法分步动画画布');
+  wrap.appendChild(canvas);
+  container.appendChild(wrap);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  return { canvas, ctx, wrap };
+}
+
+function drawGrid(ctx, w, h) {
+  ctx.strokeStyle = '#1a1d27';
+  ctx.lineWidth = 1;
+  const step = 40;
+  for (let x = 0; x < w; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let y = 0; y < h; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+}
+
+function drawAxes(ctx, w, h) {
+  ctx.strokeStyle = '#2d3140'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, h/2); ctx.lineTo(w, h/2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h); ctx.stroke();
+  ctx.fillStyle = '#4b5563'; ctx.font = '10px monospace';
+  ctx.fillText('dim 1 →', w - 50, h/2 - 6);
+  ctx.fillText('dim 0 →', w/2 + 4, 20);
+}
+
+const COLORS = ['#6c8cff', '#4ade80', '#f59e0b', '#f87171', '#c084fc', '#22d3ee', '#fb7185', '#a78bfa'];
+function clusterColor(i) { return COLORS[i % COLORS.length]; }
+
+function drawPoint(ctx, x, y, radius, color, alpha = 1, strokeColor = null) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  if (strokeColor) { ctx.strokeStyle = strokeColor; ctx.lineWidth = 2; ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawCentroid(ctx, x, y, color, label = '') {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, 8, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  // diamond
+  ctx.beginPath();
+  ctx.moveTo(x, y - 12);
+  ctx.lineTo(x + 8, y);
+  ctx.lineTo(x, y + 12);
+  ctx.lineTo(x - 8, y);
+  ctx.closePath();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  if (label) {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x, y - 16);
+  }
+  ctx.restore();
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color = '#6c8cff', alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  // arrowhead
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const len = 8;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - len * Math.cos(angle - 0.5), y2 - len * Math.sin(angle - 0.5));
+  ctx.lineTo(x2 - len * Math.cos(angle + 0.5), y2 - len * Math.sin(angle + 0.5));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawDashedCircle(ctx, x, y, r, color, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// ============================================================
+// COMPONENTS HELPERS
+// ============================================================
+function makeLegend(items) {
+  const div = document.createElement('div');
+  div.className = 'canvas-legend';
+  items.forEach(({ color, label }) => {
+    div.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div>${label}</div>`;
+  });
+  return div;
+}
+
+function makeControls(maxStep, onStep, onReset, onAuto) {
+  const div = document.createElement('div');
+  div.className = 'controls';
+  const totalSteps = maxStep + 1;
+  div.innerHTML = `
+    <div class="control-buttons">
+      <button class="btn" id="btnPrev" title="快捷键：←">◀ 上一步</button>
+      <button class="btn accent" id="btnNext" title="快捷键：→">下一步 ▶</button>
+      <button class="btn warn" id="btnReset" title="快捷键：R">↺ 重置</button>
+      <button class="btn success" id="btnAuto" title="快捷键：空格">▶ 自动播放</button>
+    </div>
+    <span class="step-indicator" id="stepLabel">步骤 1 / ${totalSteps}</span>
+    <div class="step-progress" aria-hidden="true"><span id="stepProgress"></span></div>
+    <div class="control-hint">键盘：←/→ 切换步骤，空格自动播放，R 重置，数字 1-4 切换索引。</div>
+  `;
+  return div;
+}
+
+function updateStepLabel(label, step, max) {
+  const safeStep = clamp(step, 0, max);
+  const totalSteps = max + 1;
+  const el = document.getElementById('stepLabel');
+  if (el) el.textContent = `步骤 ${safeStep + 1} / ${totalSteps}`;
+  const progress = document.getElementById('stepProgress');
+  if (progress) progress.style.width = `${max === 0 ? 100 : (safeStep / max) * 100}%`;
+  const btnPrev = document.getElementById('btnPrev');
+  const btnNext = document.getElementById('btnNext');
+  if (btnPrev) btnPrev.disabled = safeStep === 0;
+  if (btnNext) btnNext.disabled = safeStep === max;
+}
+
+// Shared step-transition: brief canvas fade between steps
+function pulseCanvas(canvasWrap) {
+  if (!canvasWrap) return;
+  canvasWrap.classList.add('stepping');
+  clearTimeout(canvasWrap._pulseTimer);
+  canvasWrap._pulseTimer = setTimeout(() => canvasWrap.classList.remove('stepping'), 180);
+}
+
+function makeExampleBlock({ title, analogy, steps, takeaway }) {
+  const div = document.createElement('div');
+  div.className = 'example-block fade-in';
+  div.innerHTML = `
+    <h3>${title}</h3>
+    <div class="example-analogy">${analogy}</div>
+    <div class="example-steps">
+      ${steps.map(item => `
+        <div class="example-step">
+          <b>${item.title}</b>
+          <span>${item.text}</span>
+        </div>
+      `).join('')}
+    </div>
+    <div class="example-takeaway">${takeaway}</div>
+  `;
+  return div;
+}
+
+function makeLessonDetails(title = '课堂补充：例子、公式和表格') {
+  const details = document.createElement('details');
+  details.className = 'lesson-details fade-in';
+  details.innerHTML = `<summary>${title}</summary><div class="lesson-details-body"></div>`;
+  return {
+    details,
+    body: details.querySelector('.lesson-details-body'),
+  };
+}
+
+function makeCountData(parts) {
+  return parts.filter(Boolean).join(' | ');
+}
+
+function formatBucketCounts(vectors, bucketCount) {
+  return Array.from({ length: bucketCount }, (_, i) =>
+    `C${i}=${vectors.filter(v => v.cluster === i).length}`
+  ).join(' / ');
+}
+
+// ============================================================
+// IVF_FLAT DEMO
+// ============================================================
+function buildIVFFLAT(container) {
+  container.innerHTML = '';
+
+  // === Overview section ===
+  const overview = document.createElement('div');
+  overview.className = 'section fade-in';
+  overview.innerHTML = `
+    <h2>🔍 IVF_FLAT — 倒排文件 + 暴力检索</h2>
+    <h3>核心思想：用 K-Means 聚类将向量空间划分为 N 个桶（bucket），查询时只搜索最近的 nprobe 个桶。</h3>
+    <p><strong>索引构建：</strong>① 对全量向量做 K-Means 聚类，得到 nlist 个聚类中心 → ② 每个向量分配到最近的聚类中心 → ③ 构建倒排列表（每个聚类中心维护一个向量 ID 列表）</p>
+    <p><strong>检索过程：</strong>① 计算查询向量与所有聚类中心的距离 → ② 选择最近的 nprobe 个聚类 → ③ 在这 nprobe 个聚类对应的所有向量中做暴力检索 → ④ 返回 Top-K</p>
+    <div class="code-block">
+<strong>参数：</strong>nlist = 4（聚类数） | nprobe = 2（搜索的聚类数） | Top-K = 3
+<strong>距离类型：</strong>L2 欧氏距离 (Euclidean) — d(a,b) = sqrt(Σ(aᵢ-bᵢ)²)
+<strong>索引结构：</strong>倒排列表 = { c0: [v0,v4,v8,...], c1: [v1,v5,v9,...], c2: [v2,v6,v10,...], c3: [v3,v7,v11,...] }
+<strong>参数选择逻辑：</strong>nlist 通常取 4×sqrt(N)~16×sqrt(N)；nprobe 越大召回越高但越慢（扫描 nprobe/nlist 比例的数据）
+    </div>
+  `;
+  container.appendChild(overview);
+  const lesson = makeLessonDetails('课堂补充：IVF_FLAT 的例子和成本表');
+  const overviewCode = overview.querySelector('.code-block');
+  if (overviewCode) lesson.body.appendChild(overviewCode);
+  lesson.body.appendChild(makeExampleBlock({
+    title: '工单例子里，IVF_FLAT 怎么找相似案例？',
+    analogy: '可以把 100 万条历史工单想成一间档案室。IVF_FLAT 先按主题把档案放进柜子：高温类、合同类、网络类、费用类。查询“设备反复高温报警”时，不需要把所有柜子都打开。',
+    steps: [
+      { title: '先分柜', text: '索引构建时，系统把历史工单向量聚成很多桶。相似主题的工单更容易被放进同一个桶。' },
+      { title: '再选柜', text: '查询向量 Q 到来后，先比较 Q 离哪些桶中心最近，只打开 nprobe 个最相关的桶。' },
+      { title: '柜内精确翻', text: '在打开的桶里仍然逐条计算精确距离，所以结果解释简单，但可能漏掉没打开的桶。' },
+    ],
+    takeaway: '讲课抓手：IVF_FLAT 的核心不是压缩，而是“少看一些数据”。nprobe 越大，看得越全但越慢。'
+  }));
+
+  // === Canvas ===
+  const W = 700, H = 500;
+  const { canvas, ctx, wrap } = createCanvas(container, W, H);
+  wrap.appendChild(makeLegend([
+    { color: '#6c8cff', label: '向量点' },
+    { color: '#fbbf24', label: '聚类中心 (Centroid)' },
+    { color: '#f87171', label: '查询向量 (Query)' },
+    { color: '#f87171', label: '── 搜索范围' },
+    { color: '#4ade80', label: '── 命中结果' },
+  ]));
+
+  // Generate data
+  const centroids = [[180, 160], [520, 150], [160, 370], [540, 380]];
+  const allVectors = generateClusteredVectors(centroids, 15, 70);
+  const queryVec = { x: 350, y: 270 };
+  const nlist = centroids.length;
+  const nprobe = 2;
+  const topKValue = 3;
+  const centroidDistsForStats = centroids.map(([cx, cy], i) => ({
+    i, cx, cy, dist: dist2d(queryVec.x, queryVec.y, cx, cy)
+  })).sort((a, b) => a.dist - b.dist);
+  const probedClusterIds = centroidDistsForStats.slice(0, nprobe).map(cd => cd.i);
+  const probedVectorCount = allVectors.filter(v => probedClusterIds.includes(v.cluster)).length;
+  const skippedClusterIds = centroids.map((_, i) => i).filter(i => !probedClusterIds.includes(i));
+  const exactSearchCost = nlist + probedVectorCount;
+
+  // State for this demo
+  let step = 0;
+  let animPhase = 0;
+  const maxStep = 5;
+
+  function drawIVFFLAT() {
+    const ctx2 = ctx;
+    ctx2.clearRect(0, 0, W, H);
+    drawGrid(ctx2, W, H);
+    drawAxes(ctx2, W, H);
+
+    const alpha = { vectors: 1, centroids: 1, query: 0, assignment: 1, probe: 0, results: 0 };
+
+    // Step 0: Show all vectors and centroids
+    if (step >= 0) {
+      alpha.vectors = 1;
+      alpha.centroids = 1;
+    }
+    // Step 1: Show assignment (vectors colored by cluster)
+    if (step >= 1) {
+      alpha.vectors = 1;
+      alpha.centroids = 1;
+    }
+    // Step 2: Show query vector
+    if (step >= 2) {
+      alpha.query = 1;
+    }
+    // Step 3: Show distance calculation to centroids
+    if (step >= 3) {
+      alpha.query = 1;
+      alpha.probe = 1;
+    }
+    // Step 4: Show nprobe selection and search scope
+    if (step >= 4) {
+      alpha.query = 1;
+      alpha.probe = 1;
+      alpha.results = 0.6;
+    }
+    // Step 5: Show top-k results
+    if (step >= 5) {
+      alpha.query = 1;
+      alpha.probe = 1;
+      alpha.results = 1;
+    }
+
+    // Draw voronoi-like regions (subtle background for each cluster)
+    if (step >= 1) {
+      centroids.forEach(([cx, cy], i) => {
+        ctx2.fillStyle = clusterColor(i) + '08';
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, 120, 0, Math.PI * 2);
+        ctx2.fill();
+      });
+    }
+
+    // Draw cluster boundaries (dashed circles around centroids)
+    if (step >= 1) {
+      centroids.forEach(([cx, cy], i) => {
+        drawDashedCircle(ctx2, cx, cy, 120, clusterColor(i), 0.6);
+      });
+    }
+
+    // Draw vectors
+    if (alpha.vectors > 0 && step >= 1) {
+      allVectors.forEach(v => {
+        const c = clusterColor(v.cluster);
+        drawPoint(ctx2, v.x, v.y, 3.5, c, alpha.vectors);
+      });
+    } else if (alpha.vectors > 0 && step === 0) {
+      allVectors.forEach(v => {
+        drawPoint(ctx2, v.x, v.y, 3.5, '#6c8cff', alpha.vectors);
+      });
+    }
+
+    // Draw centroids
+    centroids.forEach(([cx, cy], i) => {
+      const c = clusterColor(i);
+      drawCentroid(ctx2, cx, cy, c, `C${i}`);
+    });
+
+    // === Step 3+: Show query and distance to centroids ===
+    if (step >= 2) {
+      drawPoint(ctx2, queryVec.x, queryVec.y, 7, '#f87171', 1, '#fff');
+      ctx2.fillStyle = '#fff';
+      ctx2.font = 'bold 11px monospace';
+      ctx2.fillText('Q', queryVec.x + 12, queryVec.y + 4);
+
+      // Calculate distances
+      const centroidDists = centroids.map(([cx, cy], i) => ({
+        i, cx, cy, dist: dist2d(queryVec.x, queryVec.y, cx, cy)
+      }));
+      centroidDists.sort((a, b) => a.dist - b.dist);
+
+      if (step >= 3) {
+        // Draw lines to centroids
+        centroidDists.forEach((cd, rank) => {
+          const alpha_line = step >= 4 ? (rank < 2 ? 0.8 : 0.2) : 0.6;
+          ctx2.strokeStyle = rank < 2 ? '#f87171' : '#4b5563';
+          ctx2.lineWidth = rank < 2 ? 2 : 0.5;
+          ctx2.setLineDash(rank < 2 ? [] : [4, 4]);
+          ctx2.beginPath();
+          ctx2.moveTo(queryVec.x, queryVec.y);
+          ctx2.lineTo(cd.cx, cd.cy);
+          ctx2.stroke();
+          ctx2.setLineDash([]);
+
+          // Distance label
+          const mx = (queryVec.x + cd.cx) / 2;
+          const my = (queryVec.y + cd.cy) / 2;
+          ctx2.fillStyle = rank < 2 ? '#f87171' : '#4b5563';
+          ctx2.font = '10px monospace';
+          ctx2.fillText(`d=${cd.dist.toFixed(0)}`, mx + 6, my - 4);
+        });
+
+        // Highlight nprobe centroids
+        if (step >= 4) {
+          centroidDists.slice(0, 2).forEach(cd => {
+            drawDashedCircle(ctx2, cd.cx, cd.cy, 120, '#f87171', 0.8);
+            ctx2.fillStyle = '#f8717133';
+            ctx2.beginPath();
+            ctx2.arc(cd.cx, cd.cy, 118, 0, Math.PI * 2);
+            ctx2.fill();
+          });
+        }
+      }
+    }
+
+    // === Step 5: Top-K results ===
+    if (step >= 5) {
+      // Find nearest vectors to query within probed clusters
+      const centroidDists = centroids.map(([cx, cy], i) => ({
+        i, cx, cy, dist: dist2d(queryVec.x, queryVec.y, cx, cy)
+      }));
+      centroidDists.sort((a, b) => a.dist - b.dist);
+      const probedClusters = new Set(centroidDists.slice(0, nprobe).map(cd => cd.i));
+
+      const candidates = allVectors
+        .filter(v => probedClusters.has(v.cluster))
+        .map(v => ({ ...v, dist: dist2d(queryVec.x, queryVec.y, v.x, v.y) }));
+      candidates.sort((a, b) => a.dist - b.dist);
+      const topK = candidates.slice(0, topKValue);
+
+      topK.forEach((v, rank) => {
+        drawPoint(ctx2, v.x, v.y, 6, '#4ade80', 1, '#fff');
+        ctx2.fillStyle = '#4ade80';
+        ctx2.font = 'bold 11px monospace';
+        ctx2.fillText(`#${rank + 1}`, v.x + 10, v.y - 8);
+
+        // Line from query to result
+        ctx2.strokeStyle = '#4ade80';
+        ctx2.lineWidth = 2;
+        ctx2.setLineDash([3, 2]);
+        ctx2.beginPath();
+        ctx2.moveTo(queryVec.x, queryVec.y);
+        ctx2.lineTo(v.x, v.y);
+        ctx2.stroke();
+        ctx2.setLineDash([]);
+      });
+
+      // Show count of scanned vs total
+      ctx2.fillStyle = '#e1e4ed';
+      ctx2.font = '13px monospace';
+      ctx2.fillText(`扫描向量: ${candidates.length} / ${allVectors.length} (仅搜了 ${nprobe} 个桶)`, 20, H - 20);
+      ctx2.fillText(`Top-${topKValue} 结果距离: ${topK.map(v => v.dist.toFixed(0)).join(', ')}`, 20, H - 40);
+    }
+  }
+
+  // Controls
+  const controlsDiv = makeControls(maxStep, null, null, null);
+  wrap.parentNode.insertBefore(controlsDiv, wrap.nextSibling);
+
+  const stepDetail = document.createElement('div');
+  stepDetail.className = 'step-detail fade-in';
+  wrap.parentNode.insertBefore(stepDetail, wrap.nextSibling);
+
+  const stepInfo = [
+    { title: '初始状态 — 向量空间', desc: `图中蓝点就是历史工单向量，共 ${allVectors.length} 个。索引尚未建立时，检索必须和每个点都算一次距离。`, data: makeCountData([`图中向量数: ${allVectors.length}`, '维度: 2', `暴力检索成本: ${allVectors.length} 次距离计算`]) },
+    { title: 'K-Means 聚类划分', desc: `执行 K-Means，将 ${allVectors.length} 个向量划分到 ${nlist} 个桶。每个桶里的点数直接来自图中的数据。`, data: makeCountData([`nlist=${nlist}`, `每桶数量: ${formatBucketCounts(allVectors, nlist)}`, '倒排列表已构建']) },
+    { title: '查询向量到来', desc: `用户提交查询向量 Q（红色实心圆）。接下来需要找到距离 Q 最近的 Top-${topKValue} 个向量。`, data: `查询向量 Q 位置: (${queryVec.x}, ${queryVec.y})` },
+    { title: '计算到聚类中心的距离', desc: `计算 Q 到 ${nlist} 个聚类中心 C0~C${nlist - 1} 的欧氏距离。这是粗粒度过滤，只需要 ${nlist} 次中心距离计算。`, data: `${centroidDistsForStats.map(cd => `d(Q,C${cd.i})=${Math.round(cd.dist)}`).join('  ')}  → 最近: ${probedClusterIds.map(i => `C${i}`).join(', ')}` },
+    { title: `选择 nprobe=${nprobe} 个桶进行精确检索`, desc: `只搜索 ${probedClusterIds.map(i => `C${i}`).join(' 和 ')} 对应的倒排列表，共 ${probedVectorCount} 个候选向量。未打开的桶会被跳过。`, data: makeCountData([`nprobe=${nprobe}`, `扫描 ${probedVectorCount}/${allVectors.length} 个向量`, `跳过 ${skippedClusterIds.map(i => `C${i}`).join(', ')}`]) },
+    { title: `桶内暴力检索 → Top-${topKValue} 结果`, desc: `在已打开的 ${nprobe} 个桶里执行 FLAT 精确距离计算，排序返回 Top-${topKValue}。绿色实心圆为最终结果。`, data: makeCountData([`中心计算 ${nlist} 次 + 桶内计算 ${probedVectorCount} 次 = ${exactSearchCost} 次`, `全量暴力 ${allVectors.length} 次`, `扫描比例 ${(probedVectorCount / allVectors.length * 100).toFixed(0)}%`]) },
+  ];
+
+  function updateIVFInfo() {
+    const info = stepInfo[Math.min(step, stepInfo.length - 1)];
+    stepDetail.innerHTML = `
+      <span class="step-num">STEP ${step + 1}</span>
+      <span class="step-title">${info.title}</span>
+      <div class="step-desc">${info.desc}</div>
+      <div class="step-data">📊 ${info.data}</div>
+    `;
+    updateStepLabel(null, step, maxStep);
+  }
+
+  function render() {
+    drawIVFFLAT();
+    updateIVFInfo();
+  }
+
+  function nextStep() {
+    if (step < maxStep) { step++; render(); }
+  }
+  function prevStep() {
+    if (step > 0) { step--; render(); }
+  }
+  function reset() { step = 0; pulseCanvas(wrap); render(); }
+
+  controlsDiv.querySelector('#btnNext').onclick = nextStep;
+  controlsDiv.querySelector('#btnPrev').onclick = prevStep;
+  controlsDiv.querySelector('#btnReset').onclick = reset;
+
+  // use globalAutoTimer
+  controlsDiv.querySelector('#btnAuto').onclick = () => {
+    if (globalAutoTimer) { clearInterval(globalAutoTimer); globalAutoTimer = null; controlsDiv.querySelector('#btnAuto').textContent = '▶ 自动播放'; return; }
+    controlsDiv.querySelector('#btnAuto').textContent = '⏸ 暂停';
+    globalAutoTimer = setInterval(() => {
+      if (step >= maxStep) { clearInterval(globalAutoTimer); globalAutoTimer = null; controlsDiv.querySelector('#btnAuto').textContent = '▶ 自动播放'; return; }
+      nextStep();
+    }, 2500);
+  };
+
+  render();
+
+  // Data panel
+  const dataPanel = document.createElement('div');
+  dataPanel.className = 'data-panel fade-in';
+  dataPanel.innerHTML = `
+    <div class="data-card">
+      <h4>📋 倒排列表结构</h4>
+      <table class="data-table">
+        <tr><th>聚类</th><th>中心坐标</th><th>向量ID列表</th><th>数量</th></tr>
+        ${centroids.map(([cx,cy], i) => {
+          const ids = allVectors.filter(v => v.cluster === i).map(v => v.id);
+          return `<tr><td style="color:${clusterColor(i)}">C${i}</td><td>(${cx},${cy})</td><td>[${ids.slice(0,6).join(',')}${ids.length>6?'…':''}]</td><td>${ids.length}</td></tr>`;
+        }).join('')}
+      </table>
+    </div>
+    <div class="data-card">
+      <h4>📐 检索成本分析</h4>
+      <table class="data-table">
+        <tr><th>阶段</th><th>操作</th><th>距离计算次数</th></tr>
+        <tr><td>① 粗排</td><td>查找最近 nprobe 个聚类中心</td><td class="highlight">nlist = ${nlist}</td></tr>
+        <tr><td>② 精排</td><td>桶内暴力检索 (FLAT)</td><td class="highlight">${probedVectorCount} 个候选向量</td></tr>
+        <tr><td>合计</td><td></td><td class="highlight">${exactSearchCost} 次距离计算 (vs 暴力 ${allVectors.length})</td></tr>
+        <tr style="color:#f87171"><td>⚠ 权衡</td><td colspan="2">nprobe 越大 → 召回率高但速度慢；nprobe 越小 → 速度快但可能漏召回</td></tr>
+      </table>
+    </div>
+  `;
+  lesson.body.appendChild(dataPanel);
+  container.appendChild(lesson.details);
+}
+
+// ============================================================
+// IVF_SQ8 DEMO
+// ============================================================
+function buildIVFSQ8(container) {
+  container.innerHTML = '';
+
+  const overview = document.createElement('div');
+  overview.className = 'section fade-in';
+  overview.innerHTML = `
+    <h2>📦 IVF_SQ8 — 标量量化 (Scalar Quantization, 8-bit)</h2>
+    <h3>核心思想：在 IVF_FLAT 基础上，将每个向量的 float32 分量压缩为 uint8，内存降低 4×，但引入少量精度损失。</h3>
+    <p><strong>量化过程：</strong>对每个维度，找到该维度上的 [min, max] 范围 → 将 float32 值线性映射到 [0, 255] 的 uint8 → 存储时用 1 字节代替 4 字节。</p>
+    <p><strong>检索过程：</strong>与 IVF_FLAT 相同（先查聚类，再桶内暴力检索），但距离计算时先将 uint8 解压回 float32 近似值。</p>
+    <div class="code-block">
+<strong>量化公式：</strong>  uint8_value = round( (float_value - min) / (max - min) × 255 )
+<strong>逆量化：</strong>  float_approx = min + uint8_value × (max - min) / 255
+<strong>内存对比：</strong> float32向量(128维): 128×4 = 512B → SQ8向量: 128×1 = 128B (压缩 75%)
+<strong>距离类型：</strong>L2 欧氏距离 — 但使用逆量化后的近似 float 值计算，有微小误差
+<strong>参数选择逻辑：</strong>nlist 同 IVF_FLAT；SQ8 不引入新参数，适用于内存减半需求但精度要求不太苛刻的场景
+    </div>
+  `;
+  container.appendChild(overview);
+  const lesson = makeLessonDetails('课堂补充：IVF_SQ8 的例子和量化表');
+  const overviewCode = overview.querySelector('.code-block');
+  if (overviewCode) lesson.body.appendChild(overviewCode);
+  lesson.body.appendChild(makeExampleBlock({
+    title: '工单例子里，IVF_SQ8 为什么能省内存？',
+    analogy: '还是那 100 万条工单。IVF_FLAT 存的是高清原图，IVF_SQ8 像把每张图变成缩略图：主题轮廓还在，但细节会有一点损失。',
+    steps: [
+      { title: '先照常分桶', text: '它仍然用 IVF 的方式先把高温、散热、传感器等相近工单放到相近桶里。' },
+      { title: '再压缩向量', text: '每个向量维度从 float32 变成 uint8，百万级数据的内存压力会明显下降。' },
+      { title: '用近似值比较', text: '查询时在桶内用压缩后的近似向量算距离，速度和内存更友好，但排序可能有轻微偏差。' },
+    ],
+    takeaway: '讲课抓手：IVF_SQ8 是“少看数据 + 每条数据更小”。适合内存紧张，但要用评测确认召回是否够。'
+  }));
+
+  const W = 700, H = 500;
+  const { canvas, ctx, wrap } = createCanvas(container, W, H);
+  wrap.appendChild(makeLegend([
+    { color: '#6c8cff', label: '原始 float32 向量' },
+    { color: '#4ade80', label: 'SQ8 量化后向量 (uint8)' },
+    { color: '#f87171', label: '量化误差范围' },
+    { color: '#fbbf24', label: '聚类中心' },
+  ]));
+
+  // Generate high-dimensional-like vectors and their SQ8 quantized versions
+  const centroids = [[180, 160], [520, 150], [160, 370], [540, 380]];
+  const allVectors = generateClusteredVectors(centroids, 12, 60);
+  const sq8Dim = 2;
+  const sq8OriginalBytesPerVector = sq8Dim * 4;
+  const sq8QuantizedBytesPerVector = sq8Dim;
+  const sq8OriginalTotalBytes = allVectors.length * sq8OriginalBytesPerVector;
+  const sq8QuantizedTotalBytes = allVectors.length * sq8QuantizedBytesPerVector;
+  const sq8MemorySaving = ((1 - sq8QuantizedTotalBytes / sq8OriginalTotalBytes) * 100).toFixed(0);
+  const sq8Nlist = centroids.length;
+  const sq8Nprobe = 2;
+  const sq8TopKValue = 3;
+
+  // Simulate SQ8 quantization: round each coordinate to nearest "quantized" position
+  // In real SQ8, each dimension is independently quantized. Here we simulate per-dim quantization.
+  const quantStep = 3; // quantization step in pixel space (simulating 256 levels)
+  const quantizedVectors = allVectors.map(v => ({
+    ...v,
+    qx: Math.round(v.x / quantStep) * quantStep,
+    qy: Math.round(v.y / quantStep) * quantStep,
+    dx: v.x - Math.round(v.x / quantStep) * quantStep,
+    dy: v.y - Math.round(v.y / quantStep) * quantStep,
+  }));
+
+  let step = 0;
+  const maxStep = 5;
+
+  function drawIVFSQ8() {
+    ctx.clearRect(0, 0, W, H);
+    drawGrid(ctx, W, H);
+    drawAxes(ctx, W, H);
+
+    // Step 0: Show original vectors
+    if (step >= 0) {
+      allVectors.forEach(v => {
+        drawPoint(ctx, v.x, v.y, 3, '#6c8cff', 0.7);
+      });
+    }
+
+    // Step 1: Show per-dimension min/max ranges
+    if (step >= 1) {
+      // Show quantization grid
+      ctx.strokeStyle = '#4ade8020';
+      ctx.lineWidth = 0.5;
+      for (let x = 0; x < W; x += quantStep * 4) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      }
+      for (let y = 0; y < H; y += quantStep * 4) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+
+      // Highlight one vector to show quantization
+      const demoVec = allVectors[5];
+      const demoQ = quantizedVectors[5];
+      drawPoint(ctx, demoVec.x, demoVec.y, 6, '#6c8cff', 1, '#fff');
+      drawPoint(ctx, demoQ.qx, demoQ.qy, 6, '#4ade80', 1, '#fff');
+      ctx.strokeStyle = '#f87171';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath();
+      ctx.moveTo(demoVec.x, demoVec.y);
+      ctx.lineTo(demoQ.qx, demoQ.qy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Label
+      ctx.fillStyle = '#fff';
+      ctx.font = '10px monospace';
+      ctx.fillText(`原始(${demoVec.x.toFixed(1)},${demoVec.y.toFixed(1)})`, demoVec.x + 8, demoVec.y - 8);
+      ctx.fillText(`SQ8(${demoQ.qx.toFixed(1)},${demoQ.qy.toFixed(1)})`, demoQ.qx + 8, demoQ.qy - 8);
+      ctx.fillText(`Δ=${Math.abs(demoVec.x-demoQ.qx).toFixed(1)},${Math.abs(demoVec.y-demoQ.qy).toFixed(1)}`, demoQ.qx + 8, demoQ.qy + 10);
+    }
+
+    // Step 2: Show all original vs quantized
+    if (step >= 2) {
+      allVectors.forEach((v, i) => {
+        const q = quantizedVectors[i];
+        drawPoint(ctx, v.x, v.y, 1.5, '#6c8cff', 0.4);
+        drawPoint(ctx, q.qx, q.qy, 3, '#4ade80', 0.8);
+        // error line
+        ctx.strokeStyle = '#f8717140';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(v.x, v.y);
+        ctx.lineTo(q.qx, q.qy);
+        ctx.stroke();
+      });
+    }
+
+    // Step 3: Show centroids and clusters
+    if (step >= 3) {
+      centroids.forEach(([cx, cy], i) => {
+        drawDashedCircle(ctx, cx, cy, 120, clusterColor(i), 0.5);
+        drawCentroid(ctx, cx, cy, clusterColor(i), `C${i}`);
+      });
+      quantizedVectors.forEach(v => {
+        drawPoint(ctx, v.qx, v.qy, 3, '#4ade80', 1);
+      });
+    }
+
+    // Step 4: Query
+    const queryVec = { x: 350, y: 270 };
+    if (step >= 4) {
+      drawPoint(ctx, queryVec.x, queryVec.y, 7, '#f87171', 1, '#fff');
+      ctx.fillText('Q', queryVec.x + 12, queryVec.y + 4);
+
+      // Find nearest centroids (using original float precision)
+      const centroidDists = centroids.map(([cx, cy], i) => ({
+        i, dist: dist2d(queryVec.x, queryVec.y, cx, cy)
+      }));
+      centroidDists.sort((a, b) => a.dist - b.dist);
+      const probed = new Set(centroidDists.slice(0, 2).map(cd => cd.i));
+
+      centroids.forEach(([cx, cy], i) => {
+        if (probed.has(i)) {
+          drawDashedCircle(ctx, cx, cy, 120, '#f87171', 0.7);
+        }
+      });
+    }
+
+    // Step 5: Top-K with SQ8 distance (approximate)
+    if (step >= 5) {
+      const queryVec = { x: 350, y: 270 };
+      const centroidDists = centroids.map(([cx, cy], i) => ({
+        i, dist: dist2d(queryVec.x, queryVec.y, cx, cy)
+      }));
+      centroidDists.sort((a, b) => a.dist - b.dist);
+      const probed = new Set(centroidDists.slice(0, 2).map(cd => cd.i));
+
+      // Use SQ8 vectors for distance (approximate)
+      const candidates = quantizedVectors
+        .filter(v => probed.has(v.cluster))
+        .map(v => ({ ...v, dist: dist2d(queryVec.x, queryVec.y, v.qx, v.qy) }));
+      candidates.sort((a, b) => a.dist - b.dist);
+      const topK = candidates.slice(0, 3);
+
+      topK.forEach((v, rank) => {
+        drawPoint(ctx, v.qx, v.qy, 6, '#4ade80', 1, '#fff');
+        ctx.fillStyle = '#4ade80';
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText(`#${rank + 1}`, v.qx + 10, v.qy - 8);
+        ctx.strokeStyle = '#4ade80';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 2]);
+        ctx.beginPath();
+        ctx.moveTo(queryVec.x, queryVec.y);
+        ctx.lineTo(v.qx, v.qy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      });
+
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '13px monospace';
+      ctx.fillText('SQ8 距离计算使用近似值 (uint8→float32 逆量化)', 20, H - 20);
+    }
+
+    // Memory bar at bottom
+    if (step >= 0) {
+      const barY = H - 8;
+      const barW = W - 40;
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '11px monospace';
+      ctx.fillText(`原始 float32: ${allVectors.length} × ${sq8Dim} × 4B = ${sq8OriginalTotalBytes}B`, 20, barY - 36);
+      ctx.fillText(`SQ8 uint8:   ${allVectors.length} × ${sq8Dim} × 1B = ${sq8QuantizedTotalBytes}B (节省 ${sq8MemorySaving}%)`, 20, barY - 18);
+      // bar
+      ctx.fillStyle = '#2d3140';
+      ctx.fillRect(20, barY, barW, 8);
+      ctx.fillStyle = '#6c8cff';
+      ctx.fillRect(20, barY, barW, 8);
+      ctx.fillStyle = '#4ade80';
+      ctx.fillRect(20, barY, barW * 0.25, 8);
+    }
+  }
+
+  const controlsDiv = makeControls(maxStep, null, null, null);
+  wrap.parentNode.insertBefore(controlsDiv, wrap.nextSibling);
+
+  const stepDetail = document.createElement('div');
+  stepDetail.className = 'step-detail fade-in';
+  wrap.parentNode.insertBefore(stepDetail, wrap.nextSibling);
+
+  const stepInfo = [
+    { title: '原始 float32 向量', desc: `图中蓝色点为原始向量位置，共 ${allVectors.length} 个。每个向量有 ${sq8Dim} 个维度，每维存储为 4 字节 float32。`, data: makeCountData([`图中向量数: ${allVectors.length}`, `维度: ${sq8Dim}`, `原始存储: ${allVectors.length}×${sq8Dim}×4B=${sq8OriginalTotalBytes}B`]) },
+    { title: '标量量化 — 单维映射', desc: '对每个维度独立量化：找到 [min, max] → 均匀分为 256 个区间 → 用 1 字节 uint8 表示。图中绿色点为量化后位置，红色虚线表示量化误差。', data: '量化步长 = (max - min) / 255 | uint8范围: [0, 255] | 单维误差 ≤ step/2' },
+    { title: '全量量化 — 所有向量压缩', desc: `图中 ${allVectors.length} 个向量都经 SQ8 压缩。绿色点是压缩后的近似位置。`, data: makeCountData([`原始 ${sq8OriginalTotalBytes}B`, `SQ8 ${sq8QuantizedTotalBytes}B`, `节省 ${sq8MemorySaving}%`]) },
+    { title: 'IVF 聚类 + SQ8 索引', desc: `聚类中心（C0~C${sq8Nlist - 1}）保持 float32 精度，倒排列表中存储的是 ${quantizedVectors.length} 个 SQ8 压缩向量。`, data: makeCountData([`聚类中心: ${sq8Nlist}`, `桶内压缩向量: ${quantizedVectors.length}`, '距离计算: 先逆量化再算距离']) },
+    { title: '查询 — 粗排 + 桶内近似检索', desc: `查询向量 Q 保持 float32。先选 nprobe=${sq8Nprobe} 个桶，然后在桶内用 SQ8 近似向量计算距离。`, data: makeCountData(['粗排: 与聚类中心比较', `nprobe=${sq8Nprobe}`, '精排: 与SQ8向量比较']) },
+    { title: `Top-${sq8TopKValue} 结果 (近似距离)`, desc: `绿色高亮为 Top-${sq8TopKValue} 结果。由于 SQ8 引入量化误差，排序可能略异于 IVF_FLAT。`, data: makeCountData(['召回表现取决于 nlist、nprobe、数据分布和评测集', `内存节省约 ${sq8MemorySaving}%`, '距离计算会有近似误差']) },
+  ];
+
+  function updateInfo() {
+    const info = stepInfo[Math.min(step, stepInfo.length - 1)];
+    stepDetail.innerHTML = `
+      <span class="step-num">STEP ${step + 1}</span>
+      <span class="step-title">${info.title}</span>
+      <div class="step-desc">${info.desc}</div>
+      <div class="step-data">📊 ${info.data}</div>
+    `;
+    updateStepLabel(null, step, maxStep);
+  }
+
+  function render() { drawIVFSQ8(); updateInfo(); }
+  function nextStep() { if (step < maxStep) { step++; pulseCanvas(wrap); render(); } }
+  function prevStep() { if (step > 0) { step--; pulseCanvas(wrap); render(); } }
+  function reset() { step = 0; pulseCanvas(wrap); render(); }
+
+  controlsDiv.querySelector('#btnNext').onclick = nextStep;
+  controlsDiv.querySelector('#btnPrev').onclick = prevStep;
+  controlsDiv.querySelector('#btnReset').onclick = reset;
+
+  // use globalAutoTimer
+  controlsDiv.querySelector('#btnAuto').onclick = () => {
+    if (globalAutoTimer) { clearInterval(globalAutoTimer); globalAutoTimer = null; controlsDiv.querySelector('#btnAuto').textContent = '▶ 自动播放'; return; }
+    controlsDiv.querySelector('#btnAuto').textContent = '⏸ 暂停';
+    globalAutoTimer = setInterval(() => {
+      if (step >= maxStep) { clearInterval(globalAutoTimer); globalAutoTimer = null; controlsDiv.querySelector('#btnAuto').textContent = '▶ 自动播放'; return; }
+      nextStep();
+    }, 2800);
+  };
+
+  render();
+
+  // Quantization demo card
+  const dataPanel = document.createElement('div');
+  dataPanel.className = 'data-panel fade-in';
+  dataPanel.innerHTML = `
+    <div class="data-card">
+      <h4>🔢 量化示例 (单向量 8 维 → 8 字节)</h4>
+      <table class="data-table">
+        <tr><th>维度</th><th>float32 原始值</th><th>uint8 量化值</th><th>逆量化近似值</th><th>误差</th></tr>
+        ${(() => {
+          const vals = [0.742, -0.331, 1.205, 0.189, -0.897, 0.456, -0.123, 0.998];
+          const min = -1.0, max = 1.5;
+          let rows = '';
+          vals.forEach(v => {
+            const q = Math.round((v - min) / (max - min) * 255);
+            const approx = min + q * (max - min) / 255;
+            const err = Math.abs(v - approx);
+            rows += `<tr><td>dim_${vals.indexOf(v)}</td><td>${v.toFixed(4)}</td><td>${q}</td><td>${approx.toFixed(4)}</td><td>${err.toFixed(4)}</td></tr>`;
+          });
+          return rows;
+        })()}
+      </table>
+    </div>
+    <div class="data-card">
+      <h4>📊 IVF_FLAT vs IVF_SQ8 对比</h4>
+      <table class="data-table">
+        <tr><th>指标</th><th>IVF_FLAT</th><th>IVF_SQ8</th></tr>
+        <tr><td>向量存储</td><td>float32 (4B/dim)</td><td>uint8 (1B/dim)</td></tr>
+        <tr><td>128维向量大小</td><td>512 字节</td><td>128 字节</td></tr>
+        <tr><td>百万向量内存</td><td>~512 MB</td><td>~128 MB</td></tr>
+        <tr><td>距离精度</td><td>精确</td><td>近似 (误差 <0.5%)</td></tr>
+        <tr><td>检索速度</td><td>较快 (内存带宽受限)</td><td>更快 (更少内存IO)</td></tr>
+        <tr><td>适用场景</td><td>内存充足，精度优先</td><td>内存受限，速度优先</td></tr>
+      </table>
+    </div>
+  `;
+  lesson.body.appendChild(dataPanel);
+  container.appendChild(lesson.details);
+}
+
+// ============================================================
+// IVF_PQ DEMO
+// ============================================================
+function buildIVFPQ(container) {
+  container.innerHTML = '';
+
+  const overview = document.createElement('div');
+  overview.className = 'section fade-in';
+  overview.innerHTML = `
+    <h2>🧩 IVF_PQ — 乘积量化 (Product Quantization)</h2>
+    <h3>核心思想：将向量切分为 M 个子段，对每个子段独立做 K-Means 量化，用码本索引代替原始值——压缩率极高。</h3>
+    <p><strong>PQ 构建：</strong>① 将 d 维向量切分为 M 个子向量（每个 d/M 维）→ ② 对每个子空间独立运行 K-Means（每空间 K=256 个聚类中心）→ ③ 每个子向量用最近的聚类中心 ID（1 字节）表示 → 向量压缩为 M 个字节。</p>
+    <p><strong>PQ 距离计算（非对称）：</strong>查询向量保持 float32 → 预计算查询子段到所有码字的距离 → 查表得到候选向量距离 = Σ lookup[subspace_i][code_i]。</p>
+    <div class="code-block">
+<strong>参数：</strong>d = 128（原始维度）| M = 8（子段数）| d_sub = 16（每子段维度）| K = 256（每子段码字数）
+<strong>压缩比：</strong>原始 float32: 128×4 = 512B → PQ: 8×1 = 8B (压缩 64×!)
+<strong>距离类型：</strong>ADC (非对称距离计算) — 查询用 float32，候选用码字 ID 查表。ADC 支持 L2 距离: d² ≈ Σ LUT[subspace_i][code_i]
+<strong>参数选择逻辑：</strong>M 必须整除 d，M 越大压缩越强但精度越低；K 通常取 256（1字节/码字ID）；与 IVF 联用时 nlist 还需独立选择
+    </div>
+  `;
+  container.appendChild(overview);
+  const lesson = makeLessonDetails('课堂补充：IVF_PQ 拆解、公式和表格');
+  const overviewCode = overview.querySelector('.code-block');
+  if (overviewCode) lesson.body.appendChild(overviewCode);
+  lesson.body.appendChild(makeExampleBlock({
+    title: '工单例子里，IVF_PQ 怎么把向量压得更狠？',
+    analogy: '如果 SQ8 是缩略图，PQ 更像给工单打组合标签：温度异常=标签12，风扇问题=标签37，传感器漂移=标签08。系统存标签组合，而不是完整向量。',
+    steps: [
+      { title: '拆成几段', text: '把一条工单向量拆成多个子向量，例如设备状态、故障现象、处理动作等语义片段。' },
+      { title: '每段查码本', text: '每个片段不存原始数值，只存最接近的码字 ID，相当于用短编号代表一小段含义。' },
+      { title: '查询时查表累加', text: '查询向量和码字先算好距离，候选工单只要查表加和，不必完整解码每条向量。' },
+    ],
+    takeaway: '讲课抓手：IVF_PQ 是“用码字 ID 代替原始向量”。压缩最强，但近似也更明显，必须用业务数据评测。'
+  }));
+
+  const W = 700, H = 500;
+  const { canvas, ctx, wrap } = createCanvas(container, W, H);
+  wrap.appendChild(makeLegend([
+    { color: '#6c8cff', label: '原始向量' },
+    { color: 'rgba(108,140,255,.5)', label: 'IVF 聚类区域' },
+    { color: '#f59e0b', label: '子段码本中心' },
+    { color: '#4ade80', label: 'PQ 编码向量 (M个码字ID)' },
+    { color: '#f87171', label: '查询向量 / IVF probe 桶' },
+  ]));
+
+  let step = 0;
+  const maxStep = 6;
+
+  // Simulate PQ with 2D vectors split into 2 sub-vectors (each 1D)
+  // In 2D: sub-vector 0 = x-coordinate, sub-vector 1 = y-coordinate
+  // Each sub-space has K=4 codebook entries
+
+  const allVectors = [];
+  const centroids = [[150, 150], [550, 150], [150, 380], [550, 380]];
+  centroids.forEach(([cx, cy], ci) => {
+    for (let i = 0; i < 12; i++) {
+      allVectors.push({
+        id: allVectors.length,
+        x: cx + (Math.random() - 0.5) * 100,
+        y: cy + (Math.random() - 0.5) * 100,
+        cluster: ci,
+      });
+    }
+  });
+
+  // Simulate PQ codebooks for each dimension (subspace)
+  // Subspace 0 (x): 4 codebook entries
+  const cbX = [120, 320, 520, 650]; // codebook for x-dim subspaces
+  const cbY = [130, 260, 390, 490]; // codebook for y-dim subspaces
+
+  function quantizePQ(v) {
+    const cx = cbX.reduce((best, c) => Math.abs(c - v.x) < Math.abs(best - v.x) ? c : best, cbX[0]);
+    const cy = cbY.reduce((best, c) => Math.abs(c - v.y) < Math.abs(best - v.y) ? c : best, cbY[0]);
+    return {
+      qx: cx, qy: cy,
+      codeX: cbX.indexOf(cx),
+      codeY: cbY.indexOf(cy),
+    };
+  }
+
+  const pqVectors = allVectors.map(v => ({ ...v, ...quantizePQ(v) }));
+  const pqDim = 2;
+  const pqSubspaces = 2;
+  const pqBytesPerVector = pqSubspaces;
+  const pqOriginalBytesPerVector = pqDim * 4;
+  const pqOriginalTotalBytes = pqVectors.length * pqOriginalBytesPerVector;
+  const pqEncodedTotalBytes = pqVectors.length * pqBytesPerVector;
+  const pqCompressionRatio = (pqOriginalTotalBytes / pqEncodedTotalBytes).toFixed(1);
+  const pqCodebookSizeBytes = (cbX.length + cbY.length) * 4;
+  const pqLutSize = cbX.length + cbY.length;
+  const pqTopKValue = 3;
+  const pqDemoVector = pqVectors.find(v => v.codeX === 2 && v.codeY === 0) || pqVectors[0];
+  const pqDemoQuery = { x: 380, y: 300 };
+  const pqDemoLutX = cbX.map(cx => Math.abs(pqDemoQuery.x - cx));
+  const pqDemoLutY = cbY.map(cy => Math.abs(pqDemoQuery.y - cy));
+  const pqDemoApproxDist = pqDemoLutX[pqDemoVector.codeX] + pqDemoLutY[pqDemoVector.codeY];
+  const pqDemoExactDist = Math.abs(pqDemoQuery.x - pqDemoVector.x) + Math.abs(pqDemoQuery.y - pqDemoVector.y);
+  const pqDemoApproxX = pqDemoLutX[pqDemoVector.codeX];
+  const pqDemoApproxY = pqDemoLutY[pqDemoVector.codeY];
+  const pqDemoExactX = Math.abs(pqDemoQuery.x - pqDemoVector.x);
+  const pqDemoExactY = Math.abs(pqDemoQuery.y - pqDemoVector.y);
+
+  const pqPlainBlock = makeExampleBlock({
+    title: '先把 IVF_PQ 拆开看：IVF 负责少搜，PQ 负责少存',
+    analogy: '如果学生只记一句话：IVF_PQ = 先用 IVF 找到几个相关桶，再用 PQ 编码在桶里快速比较。PQ 不保存完整向量，而是保存“每一段最像哪个码字”。',
+    steps: [
+      { title: 'IVF 做什么', text: '先按聚类中心分桶。查询来了，只打开离 Q 最近的几个桶，减少候选数量。' },
+      { title: 'PQ 做什么', text: '桶里的每条向量不存完整 float 数组，而是切成几段，每段存一个码字 ID。' },
+      { title: '查询怎么比', text: '查询 Q 不压缩，先算 Q 到所有码字的距离，再对候选向量的码字 ID 查表累加。' },
+    ],
+    takeaway: '课堂讲法：IVF_PQ 的重点不是“生成答案”，而是“在大量向量里，用更小内存、更少计算找到近似 Top-K”。'
+  });
+  pqPlainBlock.classList.add('pq-plain');
+  lesson.body.appendChild(pqPlainBlock);
+
+  const pqStory = document.createElement('div');
+  pqStory.className = 'example-block pq-plain fade-in';
+  pqStory.innerHTML = `
+    <h3>只看一条向量：它为什么会变成 <span class="code-pill">[${pqDemoVector.codeX},${pqDemoVector.codeY}]</span>？</h3>
+    <div class="pq-story-grid">
+      <div class="pq-story-card">
+        <b>1 原始向量</b>
+        <span>先看一条历史工单向量，图里简化成二维坐标。</span>
+        <span class="big-code">v${pqDemoVector.id} = (${pqDemoVector.x.toFixed(1)}, ${pqDemoVector.y.toFixed(1)})</span>
+      </div>
+      <div class="pq-story-card">
+        <b>2 拆成两段</b>
+        <span>二维演示里，x 是第一段，y 是第二段。真实 128 维会拆成更多段。</span>
+        <span class="big-code">x=${pqDemoVector.x.toFixed(1)} / y=${pqDemoVector.y.toFixed(1)}</span>
+      </div>
+      <div class="pq-story-card">
+        <b>3 每段找最近码字</b>
+        <span>x 最接近 X${pqDemoVector.codeX}=${pqDemoVector.qx}，y 最接近 Y${pqDemoVector.codeY}=${pqDemoVector.qy}。</span>
+        <span class="big-code">编码 = [${pqDemoVector.codeX}, ${pqDemoVector.codeY}]</span>
+      </div>
+      <div class="pq-story-card">
+        <b>4 查询时查表</b>
+        <span>这里用 L1 距离演示：|x差| + |y差|。PQ 用码字中心算近似距离，原始距离用原坐标算。</span>
+        <span class="big-code">近似 = |${pqDemoQuery.x}-${pqDemoVector.qx}| + |${pqDemoQuery.y}-${pqDemoVector.qy}| = ${pqDemoApproxX.toFixed(0)} + ${pqDemoApproxY.toFixed(0)} = ${pqDemoApproxDist.toFixed(0)}</span>
+        <span class="big-code">原始 = |${pqDemoQuery.x}-${pqDemoVector.x.toFixed(1)}| + |${pqDemoQuery.y}-${pqDemoVector.y.toFixed(1)}| ≈ ${pqDemoExactX.toFixed(0)} + ${pqDemoExactY.toFixed(0)} = ${pqDemoExactDist.toFixed(0)}</span>
+      </div>
+    </div>
+    <div class="example-takeaway">这就是 PQ 的代价：存得小、算得快，但距离是近似值，所以召回率必须用业务数据评测。</div>
+  `;
+  lesson.body.appendChild(pqStory);
+
+  function drawIVFPQ() {
+    ctx.clearRect(0, 0, W, H);
+    drawGrid(ctx, W, H);
+    drawAxes(ctx, W, H);
+
+    // IVF context: Draw cluster regions (subtle) for all steps >= 0
+    // These clusters show the "IVF" part of IVFPQ
+    if (step >= 0) {
+      centroids.forEach(([cx, cy], i) => {
+        ctx.strokeStyle = clusterColor(i) + '20';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 6]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, 100, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Small centroid marker
+        drawPoint(ctx, cx, cy, 4, clusterColor(i), 0.5);
+        ctx.fillStyle = clusterColor(i) + '88';
+        ctx.font = '9px monospace';
+        ctx.fillText(`C${i}`, cx + 6, cy - 6);
+      });
+    }
+
+    // Step 0: Original vectors (colored by IVF cluster)
+    if (step >= 0) {
+      allVectors.forEach(v => drawPoint(ctx, v.x, v.y, 2.5, '#6c8cff', 0.7));
+    }
+
+    // Step 1: Show vector splitting into sub-vectors (within IVF framework)
+    if (step >= 1) {
+      const demoV = allVectors[3];
+      // Draw splitting lines
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath();
+      ctx.moveTo(demoV.x, 0); ctx.lineTo(demoV.x, H);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, demoV.y); ctx.lineTo(W, demoV.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawPoint(ctx, demoV.x, demoV.y, 5, '#6c8cff', 1, '#fff');
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = '10px monospace';
+      ctx.fillText(`子段0: x=${demoV.x.toFixed(1)}`, demoV.x + 8, 30);
+      ctx.fillText(`子段1: y=${demoV.y.toFixed(1)}`, 10, demoV.y - 8);
+      ctx.fillText('d=2维切分为 M=2 个子段', 20, H - 20);
+    }
+
+    // Step 2: Codebook visualization
+    if (step >= 2) {
+      // Show codebook for x-dim (vertical lines)
+      cbX.forEach(cx => {
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(cx, 0); ctx.lineTo(cx, H);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = '11px monospace';
+        ctx.fillText(`X${cbX.indexOf(cx)}`, cx + 4, 20);
+      });
+      // Show codebook for y-dim (horizontal lines)
+      cbY.forEach(cy => {
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, cy); ctx.lineTo(W, cy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = '11px monospace';
+        ctx.fillText(`Y${cbY.indexOf(cy)}`, W - 30, cy - 4);
+      });
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '12px monospace';
+      ctx.fillText(`子段0 (x): 码本 K=${cbX.length}   子段1 (y): 码本 K=${cbY.length}`, 20, H - 12);
+    }
+
+    // Step 3: Show all vectors quantized via PQ
+    if (step >= 3) {
+      pqVectors.forEach(v => {
+        drawPoint(ctx, v.qx, v.qy, 2.5, '#f59e0b', 0.8);
+        // error line
+        ctx.strokeStyle = '#f8717130';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(v.x, v.y);
+        ctx.lineTo(v.qx, v.qy);
+        ctx.stroke();
+      });
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '12px monospace';
+      ctx.fillText(`所有 ${pqVectors.length} 个向量编码为 (cx_id, cy_id) → 每个向量仅需 ${pqBytesPerVector} 字节!`, 20, H - 12);
+    }
+
+    // Step 4: Show one vector's PQ code
+    if (step >= 4) {
+      const demoV = pqVectors[3];
+      drawPoint(ctx, demoV.qx, demoV.qy, 6, '#4ade80', 1, '#fff');
+      ctx.fillStyle = '#4ade80';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText(`编码: [${demoV.codeX}, ${demoV.codeY}] → 原向量(${demoV.x.toFixed(0)},${demoV.y.toFixed(0)})`, 20, H - 30);
+    }
+
+    // Step 5: Query with IVF probe + ADC (IVFPQ Asymmetric Distance Computation)
+    const queryVec = { x: 380, y: 300 };
+    if (step >= 5) {
+      drawPoint(ctx, queryVec.x, queryVec.y, 7, '#f87171', 1, '#fff');
+      ctx.fillText('Q', queryVec.x + 12, queryVec.y + 4);
+
+      // --- IVF: Find nearest clusters first ---
+      const centroidDists = centroids.map(([cx, cy], i) => ({
+        i, cx, cy, dist: dist2d(queryVec.x, queryVec.y, cx, cy)
+      }));
+      centroidDists.sort((a, b) => a.dist - b.dist);
+      const probedClusters = new Set(centroidDists.slice(0, 2).map(cd => cd.i));
+      // Highlight probed clusters
+      probedClusters.forEach(ci => {
+        const [cx, cy] = centroids[ci];
+        drawDashedCircle(ctx, cx, cy, 100, '#f87171', 0.6);
+        ctx.fillStyle = '#f8717120';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 98, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f87171';
+        ctx.font = '10px monospace';
+        ctx.fillText(`IVF probe C${ci}`, cx - 30, cy - 60);
+      });
+
+      // --- PQ: Precompute distance lookup table ---
+      // For each subspace, distance from query to each codeword (using L1 for demo clarity)
+      const lutX = cbX.map(cx => Math.abs(queryVec.x - cx));
+      const lutY = cbY.map(cy => Math.abs(queryVec.y - cy));
+
+      // Show LUT (distance lookup table)
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('ADC 距离查找表 (L1):', 10, 76);
+      lutX.forEach((d, i) => {
+        ctx.fillText(`LUT_X[X${i}]=${d.toFixed(0)}`, 10, 90 + i * 16);
+      });
+      lutY.forEach((d, i) => {
+        ctx.fillText(`LUT_Y[Y${i}]=${d.toFixed(0)}`, 160, 90 + i * 16);
+      });
+
+      // ADC: distance = LUT_X[codeX] + LUT_Y[codeY], only within probed IVF clusters
+      const candidates = pqVectors
+        .filter(v => probedClusters.has(v.cluster)) // IVF filtering
+        .map(v => ({
+          ...v,
+          adcDist: lutX[v.codeX] + lutY[v.codeY],
+        }));
+      candidates.sort((a, b) => a.adcDist - b.adcDist);
+      const topK = candidates.slice(0, pqTopKValue);
+
+      topK.forEach((v, rank) => {
+        drawPoint(ctx, v.qx, v.qy, 6, '#4ade80', 1, '#fff');
+        ctx.fillStyle = '#4ade80';
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText(`#${rank+1} (ADC=${(v.adcDist).toFixed(0)})`, v.qx + 10, v.qy - 8);
+      });
+
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`IVFPQ: IVF探${probedClusters.size}个桶 → ADC查表(${pqSubspaces}段×${cbX.length}码字) → Top-${pqTopKValue}`, 20, H - 20);
+      ctx.fillText(`ADC = LUT_X[codeX] + LUT_Y[codeY] | 仅扫描 ${candidates.length}/${pqVectors.length} 个向量`, 20, H - 8);
+    }
+
+    // Step 6: Full PQ retrieval pipeline
+    if (step >= 6) {
+      ctx.fillStyle = '#1a1d27cc';
+      ctx.fillRect(W/2 - 200, H/2 - 60, 400, 120);
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(W/2 - 200, H/2 - 60, 400, 120);
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '12px monospace';
+      const lines = [
+        'IVFPQ 检索完整流程:',
+        `① IVF粗排: 找最近 nprobe 个聚类中心 (${centroids.length}次距离)`,
+        `② PQ预计算: ${pqSubspaces}段×${cbX.length}码字 = ${pqLutSize}项 LUT`,
+        `③ 桶内ADC: 查表累加 ${pqSubspaces} 次/向量 (非 O(d))`,
+        `④ 排序得 Top-${pqTopKValue}`,
+        `演示压缩比 ${pqCompressionRatio}× | 高维 d=128 更显著`,
+      ];
+      lines.forEach((l, i) => ctx.fillText(l, W/2 - 190, H/2 - 40 + i * 22));
+    }
+  }
+
+  const controlsDiv = makeControls(maxStep, null, null, null);
+  wrap.parentNode.insertBefore(controlsDiv, wrap.nextSibling);
+
+  const stepDetail = document.createElement('div');
+  stepDetail.className = 'step-detail fade-in';
+  wrap.parentNode.insertBefore(stepDetail, wrap.nextSibling);
+
+  const stepInfo = [
+    { title: '先看 IVF：把向量放进桶', desc: `图中 ${pqVectors.length} 个蓝点先按位置分到 ${centroids.length} 个 IVF 桶里。IVF 的作用很简单：查询时不用全图都搜，只打开离 Q 最近的几个桶。`, data: makeCountData([`向量数: ${pqVectors.length}`, `IVF桶数 nlist=${centroids.length}`, `原始存储: ${pqOriginalTotalBytes}B`]) },
+    { title: '再看 PQ：把每条向量切成几段', desc: `PQ 开始压缩桶里的向量。二维演示里，一条向量被切成两段：x 一段，y 一段。真实高维向量也是同一个思路，只是段数更多。`, data: makeCountData([`维度 d=${pqDim}`, `切成 M=${pqSubspaces} 段`, 'x一段 / y一段']) },
+    { title: '给每一段准备码本', desc: `码本可以理解成“代表值清单”。x 只能挑最接近的 X0~X${cbX.length - 1}，y 只能挑最接近的 Y0~Y${cbY.length - 1}。`, data: makeCountData([`X码字=${cbX.length} 个`, `Y码字=${cbY.length} 个`, 'PQ码本不是IVF聚类中心']) },
+    { title: '保存编码，而不是保存原始坐标', desc: `每个向量保存成 [codeX, codeY]。例如 [2,0] 的意思是：x 用 X2 代表，y 用 Y0 代表。`, data: makeCountData([`原始每向量 ${pqOriginalBytesPerVector}B`, `PQ每向量 ${pqBytesPerVector}B`, `总存储 ${pqOriginalTotalBytes}B → ${pqEncodedTotalBytes}B`]) },
+    { title: '看一条向量：从坐标到编码', desc: `例如 v${pqDemoVector.id}=(${pqDemoVector.x.toFixed(1)}, ${pqDemoVector.y.toFixed(1)})，x 最接近 X${pqDemoVector.codeX}=${pqDemoVector.qx}，y 最接近 Y${pqDemoVector.codeY}=${pqDemoVector.qy}，所以它被存成 [${pqDemoVector.codeX},${pqDemoVector.codeY}]。`, data: makeCountData([`原始坐标不再完整保存`, `解码近似: (${pqDemoVector.qx}, ${pqDemoVector.qy})`, '会有量化误差']) },
+    { title: '查询来了：先探桶，再查表', desc: `Q 到来后，先走 IVF：选最近的桶。然后走 PQ：提前算 Q 到每个码字的距离，桶内候选只用自己的编码去查表。演示页用 L1 距离 |x差|+|y差| 展开，真实系统可按索引配置使用对应距离。`, data: makeCountData([`IVF中心距离: ${centroids.length} 次`, `码字距离表: ${pqLutSize} 项`, `桶内只比较候选编码`]) },
+    { title: `最后得到近似 Top-${pqTopKValue}`, desc: `桶内每个候选的近似距离 = LUT_X[codeX] + LUT_Y[codeY]。例如 [${pqDemoVector.codeX},${pqDemoVector.codeY}] 就查 LUT_X[${pqDemoVector.codeX}] 和 LUT_Y[${pqDemoVector.codeY}] 再相加。`, data: makeCountData([`演示近似距离: ${pqDemoApproxX.toFixed(0)}+${pqDemoApproxY.toFixed(0)}=${pqDemoApproxDist.toFixed(0)}`, `原始距离约: ${pqDemoExactX.toFixed(0)}+${pqDemoExactY.toFixed(0)}=${pqDemoExactDist.toFixed(0)}`, `返回 Top-${pqTopKValue}`]) },
+  ];
+
+  function updateInfo() {
+    const info = stepInfo[Math.min(step, stepInfo.length - 1)];
+    stepDetail.innerHTML = `
+      <span class="step-num">STEP ${step + 1}</span>
+      <span class="step-title">${info.title}</span>
+      <div class="step-desc">${info.desc}</div>
+      <div class="step-data">📊 ${info.data}</div>
+    `;
+    updateStepLabel(null, step, maxStep);
+  }
+
+  function render() { drawIVFPQ(); updateInfo(); }
+  function nextStep() { if (step < maxStep) { step++; pulseCanvas(wrap); render(); } }
+  function prevStep() { if (step > 0) { step--; pulseCanvas(wrap); render(); } }
+  function reset() { step = 0; pulseCanvas(wrap); render(); }
+
+  controlsDiv.querySelector('#btnNext').onclick = nextStep;
+  controlsDiv.querySelector('#btnPrev').onclick = prevStep;
+  controlsDiv.querySelector('#btnReset').onclick = reset;
+
+  // use globalAutoTimer
+  controlsDiv.querySelector('#btnAuto').onclick = () => {
+    if (globalAutoTimer) { clearInterval(globalAutoTimer); globalAutoTimer = null; controlsDiv.querySelector('#btnAuto').textContent = '▶ 自动播放'; return; }
+    controlsDiv.querySelector('#btnAuto').textContent = '⏸ 暂停';
+    globalAutoTimer = setInterval(() => {
+      if (step >= maxStep) { clearInterval(globalAutoTimer); globalAutoTimer = null; controlsDiv.querySelector('#btnAuto').textContent = '▶ 自动播放'; return; }
+      nextStep();
+    }, 2800);
+  };
+
+  render();
+
+  const pqSamplesByCode = Array.from(new Map(
+    pqVectors
+      .sort((a, b) => a.codeX - b.codeX || a.codeY - b.codeY || a.id - b.id)
+      .map(v => [`${v.codeX}-${v.codeY}`, v])
+  ).values()).slice(0, 12);
+
+  const dataPanel = document.createElement('div');
+  dataPanel.className = 'data-panel fade-in';
+  dataPanel.innerHTML = `
+    <div class="data-card full-span">
+      <h4>🧮 PQ 编码表怎么读？不是存原坐标，而是存“码字编号”</h4>
+      <p class="table-note">下面仍用 2 维坐标做课堂演示：把向量拆成 x、y 两段；x 去 X 码本找最近码字，y 去 Y 码本找最近码字；最终只存 [X码字ID, Y码字ID]。真实 128 维场景通常会拆成更多段，例如 8 段或 16 段。</p>
+      <div class="pq-reading-grid">
+        <div class="pq-reading-step"><b>1 原始向量</b><span>一条工单向量原本是 float 数组，例如图中简化为 (x, y)。</span></div>
+        <div class="pq-reading-step"><b>2 切成子段</b><span>x 是第 1 段，y 是第 2 段；高维时会切成更多段。</span></div>
+        <div class="pq-reading-step"><b>3 每段找最近码字</b><span>x 找 X0/X1/X2/X3，y 找 Y0/Y1/Y2/Y3。</span></div>
+        <div class="pq-reading-step"><b>4 只保存编号</b><span>例如 <span class="code-pill">[2,0]</span> 表示 x 用 X2，y 用 Y0。</span></div>
+        <div class="pq-reading-step"><b>5 解码只是近似</b><span>解码坐标 = 码字中心，不等于原始坐标，所以会有误差。</span></div>
+      </div>
+    </div>
+    <div class="data-card">
+      <h4>🧮 多种 PQ 编码样本</h4>
+      <p class="table-note">特意按不同编码抽样，避免只看到一堆 [0,0]。看重点：原始坐标不同，但会被压到有限的码字组合上。</p>
+      <table class="data-table">
+        <tr><th>工单向量ID</th><th>原始坐标</th><th>x 最近码字</th><th>y 最近码字</th><th>实际存储的 PQ 编码</th><th>解码后的近似坐标</th></tr>
+        ${pqSamplesByCode.map(v => `
+          <tr>
+            <td>${v.id}</td>
+            <td>(${v.x.toFixed(1)}, ${v.y.toFixed(1)})</td>
+            <td>X${v.codeX} = ${v.qx}</td><td>Y${v.codeY} = ${v.qy}</td>
+            <td><span class="code-pill">[${v.codeX},${v.codeY}]</span></td>
+            <td>(${v.qx.toFixed(0)}, ${v.qy.toFixed(0)})</td>
+          </tr>
+        `).join('')}
+        <tr><td colspan="6">读法：原始坐标不再完整保存，只保存码字 ID；查询时用码字距离查表累加。</td></tr>
+      </table>
+    </div>
+    <div class="data-card">
+      <h4>📚 码本含义</h4>
+      <table class="data-table">
+        <tr><th>码本</th><th>码字ID</th><th>码字中心</th><th>课堂解释</th></tr>
+        ${cbX.map((value, i) => `<tr><td>X 码本</td><td>X${i}</td><td>${value}</td><td>x 子段落到这个代表值附近</td></tr>`).join('')}
+        ${cbY.map((value, i) => `<tr><td>Y 码本</td><td>Y${i}</td><td>${value}</td><td>y 子段落到这个代表值附近</td></tr>`).join('')}
+      </table>
+    </div>
+    <div class="data-card">
+      <h4>📊 三种 IVF 变体对比</h4>
+      <table class="data-table">
+        <tr><th>特性</th><th>IVF_FLAT</th><th>IVF_SQ8</th><th>IVF_PQ</th></tr>
+        <tr><td>压缩方式</td><td>无 (原始float32)</td><td>标量量化 (8bit)</td><td>乘积量化 (码字索引)</td></tr>
+        <tr><td>bytes/向量 (128d)</td><td>512 B</td><td>128 B</td><td>8~64 B</td></tr>
+        <tr><td>压缩比</td><td>1×</td><td>4×</td><td>8× ~ 64×</td></tr>
+        <tr><td>距离计算</td><td>精确浮点</td><td>近似浮点</td><td>查表累加 (LUT)</td></tr>
+        <tr><td>召回率</td><td>最高</td><td>较高，需评测</td><td>中到高，需评测</td></tr>
+        <tr><td>内存 (千万向量)</td><td>~6.4 GB</td><td>~1.6 GB</td><td>~100~800 MB</td></tr>
+      </table>
+    </div>
+  `;
+  lesson.body.appendChild(dataPanel);
+  container.appendChild(lesson.details);
+}
+
+// ============================================================
+// HNSW DEMO
+// ============================================================
+function buildHNSW(container) {
+  container.innerHTML = '';
+
+  const overview = document.createElement('div');
+  overview.className = 'section fade-in';
+  overview.innerHTML = `
+    <h2>🕸️ HNSW — 分层可导航小世界图 (Hierarchical Navigable Small World)</h2>
+    <h3>核心思想：构建多层图结构——上层稀疏（长距离跳转），下层稠密（精确定位）。搜索时从顶层入口点出发，逐层向下贪婪搜索。</h3>
+    <p><strong>图构建：</strong>① 为每个节点随机分配层级 L（指数衰减概率分布）→ ② 从顶层到底层，每层插入节点并连接 M 个最近邻 → ③ 层内连接形成 "小世界" 特性（短路径 + 高聚类）</p>
+    <p><strong>检索过程：</strong>① 从顶层入口点 (entry point) 开始 → ② 贪婪搜索当前层，找到最近节点 → ③ 下降一层，以上层找到的最近节点为起点继续贪婪搜索 → ④ 重复至第0层（最稠密层）→ ⑤ 在第0层返回 Top-K</p>
+    <div class="code-block">
+<strong>参数：</strong>M = 16 (每层最大连接数) | efConstruction = 200 (构建时搜索宽度) | ef = 64 (检索时搜索宽度)
+<strong>层级分配：</strong>P(level = L) = (1/mL) × (1 - 1/mL)^L  其中 mL = 1/ln(M) ≈ 0.36
+<strong>距离类型：</strong>L2 欧氏距离（也支持 IP 内积 / COSINE 余弦）— 图和搜索均使用同一种距离度量
+<strong>参数选择逻辑：</strong>M 越大图越密 → 召回高但内存大；ef 越大搜索越宽 → 召回高但慢；mL 控制层级分布 → 影响构建和查询复杂度
+<strong>特点：</strong>无训练步骤 | 增量插入 | 图结构天然支持近似最近邻 | 召回率取决于 M、ef 和数据分布
+    </div>
+  `;
+  container.appendChild(overview);
+  const lesson = makeLessonDetails('课堂补充：HNSW 的导航例子和层级统计');
+  const overviewCode = overview.querySelector('.code-block');
+  if (overviewCode) lesson.body.appendChild(overviewCode);
+  lesson.body.appendChild(makeExampleBlock({
+    title: '工单例子里，HNSW 为什么像导航？',
+    analogy: '把 100 万条工单想成一个专家关系网。你不从第一条工单开始翻，而是先问“最懂设备故障的人”，他再带你跳到更接近高温报警的案例群。',
+    steps: [
+      { title: '高层快速靠近', text: '上层图节点少，像城市高速路，先用少量跳转靠近“设备高温”区域。' },
+      { title: '逐层向下细找', text: '每下降一层，节点更多、连接更密，搜索从粗定位变成细定位。' },
+      { title: '底层扩展候选', text: '在 Layer 0 用 ef 控制候选宽度，ef 越大越稳但越慢。' },
+    ],
+    takeaway: '讲课抓手：HNSW 不是分桶，也不是压缩，而是“沿着相似关系图导航”。它常快，但内存和构建成本更高。'
+  }));
+
+  const W = 700, H = 520;
+  const hnswParams = {
+    M: 16,
+    efConstruction: 200,
+    ef: 64,
+    demoM0: 4,
+    demoMUpper: 2,
+    demoEf: 6,
+  };
+  const { canvas, ctx, wrap } = createCanvas(container, W, H);
+  wrap.appendChild(makeLegend([
+    { color: '#6c8cff', label: '最高层级 L0（只在底层）' },
+    { color: '#c084fc', label: '最高层级 L1（也在 L0）' },
+    { color: '#f59e0b', label: '最高层级 L2（也在 L1/L0）' },
+    { color: '#fbbf24', label: '⭐ 入口点 (Entry Point)' },
+    { color: '#f87171', label: '🔴 查询向量 / 当前节点' },
+    { color: '#4ade80', label: '── 搜索路径 / 结果' },
+  ]));
+
+  // Build a synthetic HNSW graph
+  const nodes = [];
+  const rng = (seed) => { let s = seed; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; };
+  const rand = rng(42);
+
+  // Generate nodes with levels
+  const mL = 0.36;
+  for (let i = 0; i < 40; i++) {
+    // Keep the random draw so positions stay deterministic, but use fixed
+    // teaching levels below to make the visual counts match the explanation.
+    Math.floor(-Math.log(1 - rand()) / Math.log(1 / mL));
+    const angle = rand() * Math.PI * 2;
+    const radius = 80 + rand() * 200;
+    nodes.push({
+      id: i,
+      x: W / 2 + Math.cos(angle) * radius + (rand() - 0.5) * 60,
+      y: H / 2 + Math.sin(angle) * radius + (rand() - 0.5) * 60,
+      level: 0,
+    });
+  }
+  // Fixed teaching distribution:
+  // visible L2 = 3 nodes, visible L1 = 5 nodes, visible L0 = all 40 nodes.
+  // A higher-layer node also appears in all lower layers.
+  [0, 1, 2].forEach(id => { nodes[id].level = 2; });
+  [3, 4].forEach(id => { nodes[id].level = 1; });
+  const entryPoint = nodes[0]; // highest level node
+
+  // Build adjacency per layer (simplified: connect to nearest neighbors in same or higher layer)
+  function buildEdges() {
+    const edges = { 0: [], 1: [], 2: [] };
+    for (let L = 0; L <= 2; L++) {
+      const layerNodes = nodes.filter(n => n.level >= L);
+      layerNodes.forEach(n => {
+        const others = layerNodes.filter(o => o.id !== n.id);
+        others.sort((a, b) => dist2d(n.x, n.y, a.x, a.y) - dist2d(n.x, n.y, b.x, b.y));
+        const M_max = L === 0 ? hnswParams.demoM0 : hnswParams.demoMUpper; // scaled down for a readable teaching graph
+        others.slice(0, M_max).forEach(o => {
+          edges[L].push([n.id, o.id]);
+        });
+      });
+    }
+    return edges;
+  }
+  const edges = buildEdges();
+  const layerVisibleCounts = {
+    0: nodes.filter(n => n.level >= 0).length,
+    1: nodes.filter(n => n.level >= 1).length,
+    2: nodes.filter(n => n.level >= 2).length,
+  };
+  const highestLevelCounts = {
+    0: nodes.filter(n => n.level === 0).length,
+    1: nodes.filter(n => n.level === 1).length,
+    2: nodes.filter(n => n.level === 2).length,
+  };
+  const layerCountLine = `可见节点: Layer 2=${layerVisibleCounts[2]} | Layer 1=${layerVisibleCounts[1]} | Layer 0=${layerVisibleCounts[0]}`;
+  const colorCountLine = `颜色计数: 蓝色只在L0=${highestLevelCounts[0]} | 紫色最高L1=${highestLevelCounts[1]} | 橙色最高L2=${highestLevelCounts[2]}`;
+  const constructionFocus = nodes[8];
+  const constructionCandidates = nodes
+    .filter(n => n.id !== constructionFocus.id)
+    .sort((a, b) => dist2d(constructionFocus.x, constructionFocus.y, a.x, a.y) - dist2d(constructionFocus.x, constructionFocus.y, b.x, b.y))
+    .slice(0, 8);
+
+  let step = 0;
+  const maxStep = 6;
+
+  function drawParamPanel() {
+    const x = W - 270;
+    const y = 12;
+    const w = 258;
+    const h = 92;
+    ctx.save();
+    ctx.fillStyle = '#1a1d27e8';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('HNSW 参数在图里的作用', x + 10, y + 17);
+    ctx.fillStyle = '#e1e4ed';
+    ctx.font = '10px monospace';
+    ctx.fillText(`M=${hnswParams.M}: 每点最多保留邻居边`, x + 10, y + 36);
+    ctx.fillText(`efConstruction=${hnswParams.efConstruction}: 建图候选池`, x + 10, y + 53);
+    ctx.fillText(`ef=${hnswParams.ef}: 查询候选池宽度`, x + 10, y + 70);
+    ctx.fillStyle = '#9ca3b4';
+    ctx.fillText(`动画缩放: M=${hnswParams.demoM0}/${hnswParams.demoMUpper}, ef=${hnswParams.demoEf}`, x + 10, y + 86);
+    ctx.restore();
+  }
+
+  function drawConstructionCue() {
+    if (!constructionFocus) return;
+    ctx.save();
+    ctx.strokeStyle = '#f59e0b55';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    constructionCandidates.forEach(n => {
+      ctx.beginPath();
+      ctx.moveTo(constructionFocus.x, constructionFocus.y);
+      ctx.lineTo(n.x, n.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawPoint(ctx, n.x, n.y, 5, '#f59e0b', 0.65, '#f59e0b');
+      ctx.setLineDash([4, 4]);
+    });
+    ctx.setLineDash([]);
+    drawPoint(ctx, constructionFocus.x, constructionFocus.y, 8, '#f59e0b', 1, '#fff');
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('建图节点', constructionFocus.x, constructionFocus.y - 16);
+
+    ctx.fillStyle = '#1a1d27e8';
+    ctx.fillRect(14, H - 62, 410, 52);
+    ctx.strokeStyle = '#f59e0b';
+    ctx.strokeRect(14, H - 62, 410, 52);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(`efConstruction=${hnswParams.efConstruction}: 建图时先看候选池`, 26, H - 42);
+    ctx.fillStyle = '#e1e4ed';
+    ctx.font = '10px monospace';
+    ctx.fillText(`再从候选里按 M=${hnswParams.M} 选择邻居；图中缩放展示 ${constructionCandidates.length} 个候选`, 26, H - 24);
+    ctx.restore();
+  }
+
+  function drawEfCandidateCue(candidates) {
+    if (!candidates.length) return;
+    ctx.save();
+    candidates.forEach((n, i) => {
+      ctx.strokeStyle = i === 0 ? '#4ade80' : '#f59e0b';
+      ctx.lineWidth = i === 0 ? 2 : 1.2;
+      ctx.setLineDash(i === 0 ? [] : [3, 3]);
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, i === 0 ? 12 : 9, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#1a1d27e8';
+    ctx.fillRect(14, 110, 350, 48);
+    ctx.strokeStyle = '#6c8cff';
+    ctx.strokeRect(14, 110, 350, 48);
+    ctx.fillStyle = '#6c8cff';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`查询候选池 ef=${hnswParams.ef}`, 26, 129);
+    ctx.fillStyle = '#e1e4ed';
+    ctx.font = '10px monospace';
+    ctx.fillText(`真实检索保留最多 ${hnswParams.ef} 个候选；动画缩放为 ${hnswParams.demoEf} 个`, 26, 146);
+    ctx.restore();
+  }
+
+  function drawHNSW() {
+    ctx.clearRect(0, 0, W, H);
+    drawGrid(ctx, W, H);
+
+    // Draw layer bands
+    const bandHeight = H / 3;
+    const layerLabels = ['Layer 0 (最稠密)', 'Layer 1', 'Layer 2 (最稀疏)'];
+    const layerColors = ['#6c8cff', '#c084fc', '#f59e0b'];
+
+    for (let L = 0; L <= 2; L++) {
+      const yStart = H - (L + 1) * bandHeight;
+      ctx.fillStyle = layerColors[L] + '08';
+      ctx.fillRect(0, yStart, W, bandHeight);
+      ctx.strokeStyle = layerColors[L] + '30';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 6]);
+      ctx.beginPath();
+      ctx.moveTo(0, yStart); ctx.lineTo(W, yStart);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = layerColors[L];
+      ctx.font = 'bold 12px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(layerLabels[L], 12, yStart + 18);
+    }
+
+    const layerNodeMap = { 0: [], 1: [], 2: [] };
+    nodes.forEach(n => {
+      for (let L = 0; L <= n.level; L++) layerNodeMap[L].push(n);
+    });
+
+    // Draw edges for visible layers
+    const drawLayer = (L, alpha) => {
+      edges[L].forEach(([aId, bId]) => {
+        const a = nodes[aId], b = nodes[bId];
+        ctx.strokeStyle = layerColors[L] + Math.round(alpha * 80).toString(16).padStart(2, '0');
+        ctx.lineWidth = L === 0 ? 1.5 : 2;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      });
+    };
+
+    // Draw nodes for visible layers
+    const drawNodesInLayer = (L, alpha) => {
+      layerNodeMap[L].forEach(n => {
+        const isEP = n.id === entryPoint.id && L === 2;
+        const r = isEP ? 8 : (L === 0 ? 3 : 5);
+        const c = isEP ? '#fbbf24' : layerColors[L];
+        drawPoint(ctx, n.x, n.y, r, c, alpha, isEP ? '#fff' : null);
+        if (isEP && step >= 0) {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 10px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('EP', n.x, n.y - 14);
+        }
+      });
+    };
+
+    // === Pre-compute search paths for inter-layer consistency ===
+    // Each layer's search result feeds into the next layer's entry point
+    const queryVec = { x: 420, y: 380 };
+    let layer2Result = null; // nearest node in Layer 2 (entry to Layer 1)
+    let layer1Result = null; // nearest node in Layer 1 (entry to Layer 0)
+    let layer0Result = null; // nearest node after Layer 0 search
+    let pathL2 = [], pathL1 = [], pathL0 = [];
+    let layer0Candidates = [];
+
+    // Layer 2 greedy search (pre-computed if step >= 2, reused by step 3)
+    if (step >= 2) {
+      let current = entryPoint;
+      pathL2 = [current];
+      const visited = new Set([current.id]);
+      for (let iter = 0; iter < 3; iter++) {
+        const neighbors = edges[2]
+          .filter(([a, b]) => a === current.id || b === current.id)
+          .map(([a, b]) => a === current.id ? nodes[b] : nodes[a])
+          .filter(n => !visited.has(n.id));
+        if (neighbors.length === 0) break;
+        neighbors.sort((a, b) => dist2d(queryVec.x, queryVec.y, a.x, a.y) - dist2d(queryVec.x, queryVec.y, b.x, b.y));
+        const best = neighbors[0];
+        const curDist = dist2d(queryVec.x, queryVec.y, current.x, current.y);
+        const bestDist = dist2d(queryVec.x, queryVec.y, best.x, best.y);
+        if (bestDist >= curDist) break;
+        current = best;
+        pathL2.push(current);
+        visited.add(current.id);
+      }
+      layer2Result = pathL2[pathL2.length - 1];
+    }
+
+    // Layer 1 greedy search (pre-computed if step >= 3, uses layer2Result)
+    if (step >= 3 && layer2Result) {
+      let current = layer2Result;
+      pathL1 = [current];
+      for (let iter = 0; iter < 4; iter++) {
+        const neighbors = edges[1]
+          .filter(([a, b]) => a === current.id || b === current.id)
+          .map(([a, b]) => a === current.id ? nodes[b] : nodes[a]);
+        neighbors.sort((a, b) => dist2d(queryVec.x, queryVec.y, a.x, a.y) - dist2d(queryVec.x, queryVec.y, b.x, b.y));
+        const best = neighbors[0];
+        if (!best) break;
+        if (dist2d(queryVec.x, queryVec.y, best.x, best.y) >= dist2d(queryVec.x, queryVec.y, current.x, current.y)) break;
+        current = best;
+        pathL1.push(current);
+      }
+      layer1Result = pathL1[pathL1.length - 1];
+    }
+
+    // Layer 0 beam search (pre-computed if step >= 4, uses layer1Result)
+    if (step >= 4 && layer1Result) {
+      let current = layer1Result;
+      pathL0 = [current];
+      const ef = hnswParams.demoEf;
+      const candidates = [{ n: current, d: dist2d(queryVec.x, queryVec.y, current.x, current.y) }];
+      const seen = new Set([current.id]);
+
+      for (let iter = 0; iter < 8; iter++) {
+        const nexts = [];
+        candidates.forEach(({ n }) => {
+          const neighbors = edges[0]
+            .filter(([a, b]) => a === n.id || b === n.id)
+            .map(([a, b]) => a === n.id ? nodes[b] : nodes[a])
+            .filter(nb => !seen.has(nb.id));
+          neighbors.forEach(nb => {
+            seen.add(nb.id);
+            nexts.push({ n: nb, d: dist2d(queryVec.x, queryVec.y, nb.x, nb.y) });
+          });
+        });
+        if (nexts.length === 0) break;
+        nexts.sort((a, b) => a.d - b.d);
+        candidates.push(...nexts);
+        candidates.sort((a, b) => a.d - b.d);
+        candidates.splice(ef);
+        const best = candidates[0];
+        if (best.n.id === current.id) break;
+        current = best.n;
+        pathL0.push(current);
+      }
+      layer0Result = current;
+      layer0Candidates = candidates.map(c => c.n);
+    }
+
+    // ---- Rendering ----
+    // Step-based rendering
+    if (step >= 0) {
+      // Show all layers dimly
+      for (let L = 0; L <= 2; L++) {
+        drawLayer(L, 0.3);
+        drawNodesInLayer(L, 0.5);
+      }
+      drawNodesInLayer(2, 1);
+      ctx.textAlign = 'left';
+      if (step === 0) {
+        drawConstructionCue();
+      }
+    }
+
+    // Step 1: Highlight Layer 2
+    if (step >= 1) {
+      for (let L = 0; L <= 2; L++) {
+        drawLayer(L, L === 2 ? 1 : 0.15);
+        drawNodesInLayer(L, L === 2 ? 1 : 0.2);
+      }
+    }
+
+    // Step 2: Greedy search in Layer 2
+    if (step >= 2) {
+      drawPoint(ctx, queryVec.x, queryVec.y, 7, '#f87171', 1, '#fff');
+      ctx.fillText('Q', queryVec.x + 12, queryVec.y + 4);
+      ctx.textAlign = 'left';
+
+      // Draw the pre-computed path
+      for (let i = 1; i < pathL2.length; i++) {
+        drawArrow(ctx, pathL2[i - 1].x, pathL2[i - 1].y, pathL2[i].x, pathL2[i].y, '#4ade80', 0.9);
+      }
+      // Highlight path nodes
+      pathL2.forEach((n, i) => {
+        drawPoint(ctx, n.x, n.y, 7, '#4ade80', 1, '#fff');
+        if (i === pathL2.length - 1 && layer2Result) {
+          ctx.fillStyle = '#4ade80';
+          ctx.font = 'bold 10px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('L2最近', n.x, n.y - 16);
+        }
+      });
+
+      // Show step count and distances
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      const l2Dist = layer2Result ? dist2d(queryVec.x, queryVec.y, layer2Result.x, layer2Result.y).toFixed(0) : '?';
+      ctx.fillText(`L2 搜索: ${pathL2.length} 步, 最近距离=${l2Dist}`, 20, H - 12);
+    }
+
+    // Step 3: Descend to Layer 1
+    if (step >= 3) {
+      drawPoint(ctx, queryVec.x, queryVec.y, 7, '#f87171', 1, '#fff');
+      ctx.fillText('Q', queryVec.x + 12, queryVec.y + 4);
+      ctx.textAlign = 'left';
+
+      // Entry from Layer 2: use actual layer2Result (same node that was found in step 2)
+      const entryL1 = layer2Result;
+      if (entryL1) {
+        drawPoint(ctx, entryL1.x, entryL1.y, 8, '#fbbf24', 1, '#fff');
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('L2结果→L1入口', entryL1.x, entryL1.y - 16);
+        // Arrow from EP down to this entry
+        drawArrow(ctx, entryPoint.x, entryPoint.y - 8, entryL1.x + 10, entryL1.y + 10, '#fbbf24', 0.6);
+      }
+
+      // Highlight Layer 1
+      for (let L = 0; L <= 2; L++) {
+        const a = L === 1 ? 1 : 0.1;
+        drawLayer(L, a);
+        drawNodesInLayer(L, L === 2 ? 0.2 : a);
+      }
+
+      // Draw Layer 1 search path
+      for (let i = 1; i < pathL1.length; i++) {
+        drawArrow(ctx, pathL1[i - 1].x, pathL1[i - 1].y, pathL1[i].x, pathL1[i].y, '#c084fc', 0.9);
+      }
+      // Highlight L1 path nodes
+      pathL1.forEach((n, i) => {
+        drawPoint(ctx, n.x, n.y, 6, '#c084fc', 0.9, '#fff');
+      });
+      if (layer1Result) {
+        ctx.fillStyle = '#c084fc';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('L1最近', layer1Result.x, layer1Result.y - 14);
+      }
+
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      const l1Dist = layer1Result ? dist2d(queryVec.x, queryVec.y, layer1Result.x, layer1Result.y).toFixed(0) : '?';
+      ctx.fillText(`L1 搜索: ${pathL1.length} 步, 最近距离=${l1Dist}`, 20, H - 12);
+    }
+
+    // Step 4: Descend to Layer 0 (densest)
+    if (step >= 4) {
+      drawPoint(ctx, queryVec.x, queryVec.y, 7, '#f87171', 1, '#fff');
+      ctx.fillText('Q', queryVec.x + 12, queryVec.y + 4);
+      ctx.textAlign = 'left';
+
+      // Highlight Layer 0 fully
+      drawLayer(0, 1);
+      drawNodesInLayer(0, 1);
+      for (let L = 1; L <= 2; L++) {
+        drawLayer(L, 0.08);
+        drawNodesInLayer(L, 0.08);
+      }
+
+      // Entry from Layer 1: use actual layer1Result
+      const entryL0 = layer1Result;
+      if (entryL0) {
+        drawPoint(ctx, entryL0.x, entryL0.y, 8, '#fbbf24', 1, '#fff');
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('L1结果→L0入口', entryL0.x, entryL0.y - 16);
+      }
+
+      // Draw Layer 0 search path
+      for (let i = 1; i < pathL0.length; i++) {
+        drawArrow(ctx, pathL0[i - 1].x, pathL0[i - 1].y, pathL0[i].x, pathL0[i].y, '#6c8cff', 0.9);
+      }
+      pathL0.forEach((n, i) => {
+        drawPoint(ctx, n.x, n.y, i === 0 ? 7 : 5, '#6c8cff', 0.9, i === 0 ? '#fff' : null);
+      });
+      drawEfCandidateCue(layer0Candidates);
+
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`L0 宽搜: ef=${hnswParams.ef}（动画缩放为 ${hnswParams.demoEf}）, 路径 ${pathL0.length} 步`, 20, H - 28);
+      ctx.fillText(`ef 越大，同时保留的候选越多，召回更稳但查询更慢`, 20, H - 12);
+    }
+
+    // Step 5: Top-K results in Layer 0
+    if (step >= 5) {
+      drawPoint(ctx, queryVec.x, queryVec.y, 7, '#f87171', 1, '#fff');
+      ctx.fillText('Q', queryVec.x + 12, queryVec.y + 4);
+      ctx.textAlign = 'left';
+
+      drawLayer(0, 1);
+      drawNodesInLayer(0, 1);
+
+      // Find nearest 3 nodes in full graph (simulated)
+      const allDists = nodes.map(n => ({ n, d: dist2d(queryVec.x, queryVec.y, n.x, n.y) }));
+      allDists.sort((a, b) => a.d - b.d);
+      const topK = allDists.slice(0, 3);
+
+      topK.forEach(({ n }, rank) => {
+        drawPoint(ctx, n.x, n.y, 7, '#4ade80', 1, '#fff');
+        ctx.fillStyle = '#4ade80';
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`#${rank + 1}`, n.x, n.y - 14);
+        ctx.strokeStyle = '#4ade80';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 2]);
+        ctx.beginPath();
+        ctx.moveTo(queryVec.x, queryVec.y);
+        ctx.lineTo(n.x, n.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      });
+
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`HNSW 检索完成: Top-3 距离 = ${topK.map(t => t.d.toFixed(0)).join(', ')}`, 20, H - 20);
+    }
+
+    // Step 6: Full HNSW search summary
+    if (step >= 6) {
+      // Overlay summary
+      ctx.fillStyle = '#1a1d27e6';
+      ctx.fillRect(10, H - 146, 500, 136);
+      ctx.strokeStyle = '#c084fc';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(10, H - 146, 500, 136);
+      ctx.fillStyle = '#e1e4ed';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      const lines = [
+        'HNSW 检索: 多层图 + 贪心搜索 + 候选池',
+        `L2 (高速路): 从EP→${pathL2.length}步贪心→节点#${layer2Result?.id ?? '?'}`,
+        `L1 (主干道): 从节点#${layer2Result?.id ?? '?'}→${pathL1.length}步贪心→节点#${layer1Result?.id ?? '?'}`,
+        `L0 (本地街): 从节点#${layer1Result?.id ?? '?'}→ef=${hnswParams.ef}宽搜→${pathL0.length}步→Top-3`,
+        `M=${hnswParams.M}: 控制每点邻居边，越大图越密、内存越高`,
+        `efConstruction=${hnswParams.efConstruction}: 建图候选池，越大图质量通常越好、构建越慢`,
+        `ef=${hnswParams.ef}: 查询候选池，越大召回越稳、延迟越高`,
+        `课堂动画缩放: M=${hnswParams.demoM0}/${hnswParams.demoMUpper}, ef=${hnswParams.demoEf}，为了看清路径`,
+      ];
+      lines.forEach((l, i) => ctx.fillText(l, 22, H - 130 + i * 16));
+    }
+
+    drawParamPanel();
+  }
+
+  const controlsDiv = makeControls(maxStep, null, null, null);
+  wrap.parentNode.insertBefore(controlsDiv, wrap.nextSibling);
+
+  const stepDetail = document.createElement('div');
+  stepDetail.className = 'step-detail fade-in';
+  wrap.parentNode.insertBefore(stepDetail, wrap.nextSibling);
+
+  const stepInfo = [
+    { title: 'HNSW 图结构概览', desc: '三层图结构：Layer 2 最稀疏，负责长距离跳转；Layer 1 中等密度，继续靠近目标区域；Layer 0 最稠密，包含全部节点，用于局部精细搜索。注意：高层节点会同时出现在所有低层。', data: `节点总数: 40 | ${layerCountLine} | M=${hnswParams.M} 控制每点邻居边 | efConstruction=${hnswParams.efConstruction} 是建图候选池 | ef=${hnswParams.ef} 是查询候选池` },
+    { title: '聚焦 Layer 2 — 顶层搜索', desc: 'Layer 2 可见 3 个节点，连接稀疏。这是 "高速公路层"：节点少但覆盖整个空间，适合快速跳到目标区域附近。橙色表示最高层级为 L2 的节点，它们也会出现在 L1 和 L0。', data: `Layer 2 可见节点: ${layerVisibleCounts[2]} | M=${hnswParams.M} 的作用是限制每点边数；动画用 ${hnswParams.demoMUpper} 条上层边示意，避免画面过密` },
+    { title: 'Layer 2 贪婪搜索', desc: '从入口点 EP 出发，贪婪地在 Layer 2 中移动：每一步选择邻居中距离 Q 最近的节点，直到无法更近（局部最优）。绿色箭头表示搜索路径。仅需 3~4 步即定位到 Q 附近。', data: '距离计算: ~4 次 | 搜索路径: EP→N3→N2 | 在 Layer 2 找到近似最近区域' },
+    { title: '下降到 Layer 1 — 中粒度搜索', desc: '将 Layer 2 找到的最近节点作为 Layer 1 的入口。Layer 1 可见 5 个节点：包含 3 个 L2 节点和 2 个最高层级为 L1 的紫色节点。再次执行贪婪搜索，进一步逼近 Q 的真实位置。', data: `Layer 1 可见节点: ${layerVisibleCounts[1]} | 其中最高L2=${highestLevelCounts[2]}、最高L1=${highestLevelCounts[1]} | 从上层粗定位继续细化` },
+    { title: '到达 Layer 0 — 精确搜索', desc: 'Layer 0 是 "本地街道层"：所有 40 个节点都可见。图上蓝色节点表示只存在于底层的节点；紫色和橙色节点虽然颜色不同，也同样属于 Layer 0。', data: `Layer 0 可见节点: ${layerVisibleCounts[0]} | ef=${hnswParams.ef} 控制查询时同时保留多少候选；动画缩放为 ef=${hnswParams.demoEf}` },
+    { title: 'Top-K 结果 — 完成检索', desc: '绿色高亮 #1/#2/#3 为最终 Top-3 结果。HNSW 通过多层跳跃 + 局部贪婪搜索，通常用少量候选扩展找到近似最近邻；最终召回率需要结合 M、ef、数据分布和评测集确认。无需训练，支持增量插入。', data: `M 影响图的连通性和内存 | efConstruction 影响建图质量和构建耗时 | ef 影响查询召回和延迟` },
+  ];
+
+  function updateInfo() {
+    const info = stepInfo[Math.min(step, stepInfo.length - 1)];
+    stepDetail.innerHTML = `
+      <span class="step-num">STEP ${step + 1}</span>
+      <span class="step-title">${info.title}</span>
+      <div class="step-desc">${info.desc}</div>
+      <div class="step-data">📊 ${info.data}</div>
+    `;
+    updateStepLabel(null, step, maxStep);
+  }
+
+  function render() { drawHNSW(); updateInfo(); }
+  function nextStep() { if (step < maxStep) { step++; pulseCanvas(wrap); render(); } }
+  function prevStep() { if (step > 0) { step--; pulseCanvas(wrap); render(); } }
+  function reset() { step = 0; pulseCanvas(wrap); render(); }
+
+  controlsDiv.querySelector('#btnNext').onclick = nextStep;
+  controlsDiv.querySelector('#btnPrev').onclick = prevStep;
+  controlsDiv.querySelector('#btnReset').onclick = reset;
+
+  // use globalAutoTimer
+  controlsDiv.querySelector('#btnAuto').onclick = () => {
+    if (globalAutoTimer) { clearInterval(globalAutoTimer); globalAutoTimer = null; controlsDiv.querySelector('#btnAuto').textContent = '▶ 自动播放'; return; }
+    controlsDiv.querySelector('#btnAuto').textContent = '⏸ 暂停';
+    globalAutoTimer = setInterval(() => {
+      if (step >= maxStep) { clearInterval(globalAutoTimer); globalAutoTimer = null; controlsDiv.querySelector('#btnAuto').textContent = '▶ 自动播放'; return; }
+      nextStep();
+    }, 2800);
+  };
+
+  render();
+
+  const dataPanel = document.createElement('div');
+  dataPanel.className = 'data-panel fade-in';
+  dataPanel.innerHTML = `
+    <div class="data-card full-span">
+      <h4>🎛 HNSW 参数在动画中的对应关系</h4>
+      <p class="table-note">真实索引可以设置较大的参数；课堂动画只有 40 个点，所以使用缩放值把关系画清楚。讲课时强调：参数含义不变，只是画面简化。</p>
+      <table class="data-table">
+        <tr><th>参数</th><th>真实含义</th><th>动画如何体现</th><th>调大后的代价</th></tr>
+        <tr><td class="highlight">M = ${hnswParams.M}</td><td>每个节点最多保留多少条邻居连接</td><td>控制图的边密度；动画缩放为 L0=${hnswParams.demoM0}、上层=${hnswParams.demoMUpper}</td><td>召回通常更稳，但图边更多、内存更高、构建更慢</td></tr>
+        <tr><td class="highlight">efConstruction = ${hnswParams.efConstruction}</td><td>建图/插入节点时，先搜索多少候选再挑邻居</td><td>对应“建图候选池”；它影响图怎么建，不是一次查询路径里的步数</td><td>图质量通常更好，但索引构建更慢</td></tr>
+        <tr><td class="highlight">ef = ${hnswParams.ef}</td><td>查询时底层候选池宽度</td><td>Layer 0 宽搜阶段体现；动画缩放为 ef=${hnswParams.demoEf}</td><td>召回通常更高，但查询延迟更高</td></tr>
+      </table>
+    </div>
+    <div class="data-card">
+      <h4>🪜 本动画层级统计：可见节点 vs 颜色节点</h4>
+      <p class="table-note">HNSW 的规则是：如果一个节点最高层级是 L2，它会同时出现在 L2、L1、L0；如果最高层级是 L1，它会同时出现在 L1、L0。所以不要只按颜色数 Layer 0。</p>
+      <table class="data-table">
+        <tr><th>层级</th><th>这一层实际可见节点数</th><th>由哪些颜色组成</th><th>课堂讲法</th></tr>
+        <tr><td>Layer 2</td><td>${layerVisibleCounts[2]}</td><td>橙色最高L2: ${highestLevelCounts[2]}</td><td>最稀疏，负责远距离跳转</td></tr>
+        <tr><td>Layer 1</td><td>${layerVisibleCounts[1]}</td><td>橙色最高L2: ${highestLevelCounts[2]} + 紫色最高L1: ${highestLevelCounts[1]}</td><td>中间层，继续靠近目标区域</td></tr>
+        <tr><td>Layer 0</td><td>${layerVisibleCounts[0]}</td><td>橙色最高L2: ${highestLevelCounts[2]} + 紫色最高L1: ${highestLevelCounts[1]} + 蓝色只在L0: ${highestLevelCounts[0]}</td><td>最稠密，所有节点都在这里</td></tr>
+      </table>
+    </div>
+    <div class="data-card">
+      <h4>📊 Milvus 四大索引对比总览</h4>
+      <table class="data-table">
+        <tr><th>特性</th><th>IVF_FLAT</th><th>IVF_SQ8</th><th>IVF_PQ</th><th>HNSW</th></tr>
+        <tr><td>类型</td><td>聚类+暴力</td><td>聚类+标量量化</td><td>聚类+乘积量化</td><td>分层图</td></tr>
+        <tr><td>需要训练</td><td>✅ K-Means</td><td>✅ K-Means</td><td>✅ K-Means×2</td><td>❌ 增量插入</td></tr>
+        <tr><td>内存占用</td><td>最高</td><td>中</td><td>最低</td><td>高 (图结构)</td></tr>
+        <tr><td>检索速度</td><td>中</td><td>较快</td><td>最快</td><td>快</td></tr>
+        <tr><td>召回率</td><td>最高</td><td>较高，需评测</td><td>中到高，需评测</td><td>高，取决于 M/ef</td></tr>
+        <tr><td>构建速度</td><td>中</td><td>中</td><td>慢</td><td>较慢</td></tr>
+        <tr><td>增量插入</td><td>❌ (需重建)</td><td>❌ (需重建)</td><td>❌ (需重建)</td><td>✅ 支持</td></tr>
+        <tr><td>适用场景</td><td>精度优先小数据集</td><td>内存受限中等数据集</td><td>海量数据极致压缩</td><td>高吞吐低延迟场景</td></tr>
+      </table>
+    </div>
+  `;
+  lesson.body.appendChild(dataPanel);
+  container.appendChild(lesson.details);
+}
+
+// ============================================================
+// ROUTER
+// ============================================================
+const builders = [buildIVFFLAT, buildIVFSQ8, buildIVFPQ, buildHNSW];
+
+let globalAutoTimer = null;
+
+function activateTab(idx) {
+  // Clear any running auto-play from previous tab
+  if (globalAutoTimer) { clearInterval(globalAutoTimer); globalAutoTimer = null; }
+  STATE.activeTab = idx;
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const isActive = i === idx;
+    t.classList.toggle('active', isActive);
+    t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  document.querySelectorAll('.algo-card').forEach((card, i) => {
+    const isActive = i === idx;
+    card.classList.toggle('active', isActive);
+    card.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+  const main = document.getElementById('mainContent');
+  builders[idx](main);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+document.getElementById('tabBar').addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  const idx = parseInt(tab.dataset.idx);
+  if (idx !== STATE.activeTab) activateTab(idx);
+});
+
+document.getElementById('algorithmMap').addEventListener('click', (e) => {
+  const card = e.target.closest('.algo-card');
+  if (!card) return;
+  const idx = parseInt(card.dataset.idx);
+  if (idx !== STATE.activeTab) activateTab(idx);
+});
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') {
+    const btnNext = document.getElementById('btnNext');
+    if (btnNext && !btnNext.disabled) btnNext.click();
+  } else if (e.key === 'ArrowLeft') {
+    const btnPrev = document.getElementById('btnPrev');
+    if (btnPrev && !btnPrev.disabled) btnPrev.click();
+  } else if (e.key === 'r' || e.key === 'R') {
+    const btnReset = document.getElementById('btnReset');
+    if (btnReset) btnReset.click();
+  } else if (e.key === ' ') {
+    e.preventDefault();
+    const btnAuto = document.getElementById('btnAuto');
+    if (btnAuto) btnAuto.click();
+  } else if (/^[1-4]$/.test(e.key)) {
+    activateTab(parseInt(e.key, 10) - 1);
+  }
+});
+
+// Start with IVF_FLAT
+activateTab(0);
+</script>
+</body>
+</html>

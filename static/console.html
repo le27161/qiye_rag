@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KnowForge Console</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Segoe UI", Arial, sans-serif;
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --line: #dbe4f1;
+      --text: #172235;
+      --muted: #60708a;
+      --accent: #2f6df6;
+      --accent-soft: #edf3ff;
+      --success: #0f9f64;
+      --warn: #b7791f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px;
+      display: grid;
+      gap: 18px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px 18px;
+    }
+    .brand {
+      display: grid;
+      gap: 4px;
+    }
+    .brand-title {
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .health {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #bde7d2;
+      border-radius: 999px;
+      background: #eefaf3;
+      color: var(--success);
+      padding: 6px 10px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .advisor {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+      gap: 16px;
+      align-items: stretch;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+    .advisor-main {
+      display: grid;
+      gap: 10px;
+    }
+    .advisor-main label {
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .advisor-row {
+      display: flex;
+      gap: 10px;
+    }
+    .advisor-row input {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 12px;
+      font: inherit;
+      background: #fff;
+    }
+    .advisor-row button {
+      min-width: 96px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+      padding: 9px 12px;
+    }
+    .recommendation {
+      display: grid;
+      gap: 6px;
+      border: 1px solid #c9d8ff;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      padding: 12px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .recommendation a {
+      color: var(--accent);
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .recommendation-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .recommendation-actions a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      border-radius: 8px;
+      padding: 7px 10px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+    }
+    .recommendation-actions a.secondary {
+      background: #fff;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    .card {
+      display: grid;
+      gap: 12px;
+      min-height: 220px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+    .card h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    .badge-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      border: 1px solid #c9d8ff;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+    }
+    .badge.ok {
+      color: var(--success);
+      border-color: #bde7d2;
+      background: #eefaf3;
+    }
+    .badge.warn {
+      color: var(--warn);
+      border-color: #f0d5a3;
+      background: #fff7e8;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-self: end;
+    }
+    a.button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      border-radius: 8px;
+      padding: 9px 12px;
+      color: #fff;
+      background: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+    }
+    a.button.secondary {
+      color: var(--text);
+      background: #fff;
+      border: 1px solid var(--line);
+    }
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (max-width: 820px) {
+      .shell { padding: 16px; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .advisor { grid-template-columns: 1fr; }
+      .advisor-row { flex-direction: column; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-title">KnowForge 工作台</div>
+        <div class="muted">从一个入口开始：问资料、处理任务、审批执行、查看治理状态，都按你的目标进入对应工作区。</div>
+      </div>
+      <div id="healthPill" class="health">health checking...</div>
+    </header>
+
+    <section class="advisor">
+      <div class="advisor-main">
+        <label for="intentInput">说一句你要做什么</label>
+        <div class="advisor-row">
+          <input id="intentInput" placeholder="例如：VPN 故障请帮我分步骤排障并生成执行任务" />
+          <button id="recommendBtn" type="button">帮我选择</button>
+        </div>
+      </div>
+      <div id="recommendation" class="recommendation">
+        <strong>推荐：</strong><span>查资料走知识问答；排障、审批、生成工单、跨角色协作走 Agent 任务处理。</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <div class="badge-row">
+          <span class="badge ok">快速答案</span>
+          <span class="badge">员工入口</span>
+        </div>
+        <h2>知识问答</h2>
+        <div class="muted">适合查制度、流程、规则、资料。系统直接给出答案和引用来源。</div>
+        <div class="actions">
+          <a class="button" href="/">开始提问</a>
+          <a class="button secondary" href="/admin">查看状态</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="badge-row">
+          <span class="badge ok">复杂任务</span>
+          <span class="badge">负责人入口</span>
+          <span class="badge">可审批执行</span>
+        </div>
+        <h2>Agent 任务处理</h2>
+        <div class="muted">适合多步骤、跨角色、高风险或需要审批/执行/复盘的任务。系统会拆解、协作、形成共识并生成执行任务。</div>
+        <div class="actions">
+          <a class="button" href="/v2">处理任务</a>
+          <a class="button secondary" href="/v2/ops">治理运维</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="badge-row">
+          <span class="badge">管理员入口</span>
+          <span class="badge">运行状态</span>
+        </div>
+        <h2>治理运维</h2>
+        <div class="muted">适合管理员查看知识库版本、质量报告、Bad Case、监控告警、备份恢复和系统健康状态。</div>
+        <div class="actions">
+          <a class="button" href="/admin">治理状态页</a>
+          <a class="button secondary" href="/v2/ops">运维工作台</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="badge-row">
+          <span class="badge">docs</span>
+          <span class="badge">course</span>
+        </div>
+        <h2>文档学习</h2>
+        <div class="muted">查看课程讲义、项目说明和健康检查。版本边界留给开发和运维理解，普通用户不需要关心。</div>
+        <div class="actions">
+          <a class="button" href="/docs/">V1 文档</a>
+          <a class="button secondary" href="/health">健康检查</a>
+        </div>
+      </article>
+    </section>
+
+    <footer class="footer">
+      <span>用户按意图选择入口；版本边界只用于开发、运维和验收。</span>
+      <span>Console: /console</span>
+    </footer>
+  </main>
+
+  <script>
+    const intentInput = document.getElementById("intentInput");
+    const recommendBtn = document.getElementById("recommendBtn");
+    const recommendation = document.getElementById("recommendation");
+    const agentSignals = [
+      "步骤", "拆解", "协同", "审批", "执行", "重试", "复盘", "排障", "故障",
+      "根因", "风险", "治理", "trace", "agent", "多角色", "任务", "流程设计"
+    ];
+
+    function recommendEntry() {
+      const text = (intentInput.value || "").trim().toLowerCase();
+      const shouldUseAgent = agentSignals.some((word) => text.includes(word.toLowerCase()));
+      if (!text) {
+        recommendation.innerHTML = [
+          "<strong>推荐：</strong>",
+          "<span>查资料走知识问答；排障、审批、生成工单、跨角色协作走 Agent 任务处理。</span>",
+          '<div class="recommendation-actions"><a href="/">知识问答</a><a class="secondary" href="/v2">Agent 任务处理</a></div>'
+        ].join("");
+        return;
+      }
+      if (shouldUseAgent) {
+        const encoded = encodeURIComponent(intentInput.value || "");
+        recommendation.innerHTML = [
+          "<strong>推荐：Agent 任务处理</strong>",
+          "<span>你的需求包含排障、拆解、审批、执行或复盘信号，更适合进入 Agent 任务处理。</span>",
+          `<div class="recommendation-actions"><a href="/v2?question=${encoded}">带着问题进入 Agent</a><a class="secondary" href="/">改用知识问答</a></div>`
+        ].join("");
+        return;
+      }
+      const encoded = encodeURIComponent(intentInput.value || "");
+      recommendation.innerHTML = [
+        "<strong>推荐：知识问答</strong>",
+        "<span>你的需求更像明确知识查询，先进入知识问答获取答案和引用来源。</span>",
+        `<div class="recommendation-actions"><a href="/?question=${encoded}">带着问题去问答</a><a class="secondary" href="/v2?question=${encoded}">改用 Agent</a></div>`
+      ].join("");
+    }
+
+    recommendBtn.addEventListener("click", recommendEntry);
+    intentInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        recommendEntry();
+      }
+    });
+
+    fetch("/health")
+      .then((response) => response.json())
+      .then((data) => {
+        const pill = document.getElementById("healthPill");
+        pill.textContent = `${data.status || "unknown"} · ${data.active_scenario_name || data.active_scenario_id || "scenario"}`;
+      })
+      .catch(() => {
+        const pill = document.getElementById("healthPill");
+        pill.textContent = "health unavailable";
+        pill.style.color = "#b7791f";
+        pill.style.background = "#fff7e8";
+        pill.style.borderColor = "#f0d5a3";
+      });
+  </script>
+</body>
+</html>

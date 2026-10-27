@@ -1,0 +1,19 @@
+scenario_id = "law_firm_case_search"
+display_name = "类案研究"
+industry = "法律研究"
+description = "检索公开裁判文书和已脱敏历史案件摘要。"
+assistant_name = "类案研究助手"
+business_domain = "公开案例和脱敏历史案件"
+support_contact = "案件研究负责人"
+faq_collection = "law_firm_case_search_faq_v1"
+doc_collection = "law_firm_case_documents_v1"
+valid_sources = ["public_judgment", "historical_case", "guiding_case"]
+sample_questions = ["有没有供应商逾期交付的类似判决？", "类似案件通常如何认定损失？"]
+[source_labels]
+public_judgment = "公开裁判文书"
+historical_case = "脱敏历史案件"
+guiding_case = "指导性案例"
+[source_patterns]
+public_judgment = "判决|裁定|法院|案号|审理"
+historical_case = "历史案件|内部案例|脱敏"
+guiding_case = "指导性案例|典型案例"

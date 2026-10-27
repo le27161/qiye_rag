@@ -1,0 +1,28 @@
+{
+  "package": "knowforge-rag-platform-v1-release",
+  "version": "v1.0.11",
+  "exported_at": "20260722_000907",
+  "status": "frozen",
+  "verification": {
+    "release_gates": "11/11 passed",
+    "unit_tests": "133 passed",
+    "source_comment_coverage": "1340 Python files and 9 first-party JavaScript files; 0 issues",
+    "docker_services": "healthy",
+    "v2_runtime_trace_count": 0,
+    "obsolete_artifact_count": 0
+  },
+  "online_acceptance": "blocked_by_external_llm_account",
+  "external_blocker": "DashScope Arrearage; code, Docker, retrieval, intent model and offline gates remain independently verifiable",
+  "excludes": [
+    "v2",
+    "qa_core/agent*",
+    "qa_core/graphrag",
+    "qa_core/api/v2.py",
+    "static/v2",
+    "model weight files",
+    "runtime logs",
+    "non-release reports",
+    ".env",
+    ".git"
+  ]
+}
